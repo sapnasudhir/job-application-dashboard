@@ -32,7 +32,7 @@
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f4f5f9;color:#1a1a2e;min-height:100vh;}
 
 /* ── Upload ── */
-#upload-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:2rem;}
+#upload-screen{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:2rem;}
 .upload-card{background:#fff;border-radius:18px;padding:2.5rem 2rem;max-width:460px;width:100%;box-shadow:0 6px 30px rgba(0,0,0,.09);text-align:center;}
 .upload-card h1{font-size:1.4rem;font-weight:700;margin-bottom:.4rem;}
 .tagline{color:#777;font-size:.875rem;margin-bottom:1.75rem;line-height:1.5;}
@@ -87,16 +87,36 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #pat-input{width:100%;padding:.6rem .75rem;border:1px solid #c8cdd8;border-radius:8px;font-size:.85rem;margin-bottom:1.25rem;font-family:inherit;}
 .pat-actions{display:flex;gap:.6rem;margin-top:1.25rem;}
 .pat-actions .btn-upload{flex:1;}
+
+/* ── Passcode gates ── */
+#passcode-gate{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:2rem;}
+.passcode-card{max-width:380px;}
+#pg-input,#pg-confirm,#upm-input,#upm-confirm{width:100%;padding:.65rem .8rem;border:1px solid #c8cdd8;border-radius:8px;font-size:.95rem;margin-bottom:.75rem;font-family:inherit;text-align:center;letter-spacing:.15em;}
+.passcode-err{color:#c0392b;font-size:.78rem;min-height:1.1em;margin-bottom:.5rem;}
+.passcode-reset{display:none;margin-top:1rem;font-size:.72rem;color:#999;cursor:pointer;text-decoration:underline;background:none;border:none;}
 </style>
 </head>
 <body>
+
+<!-- ══════════ PASSCODE GATE (view) ══════════ -->
+<div id="passcode-gate">
+  <div class="upload-card passcode-card">
+    <h1 id="pg-title">🔒 Enter Passcode</h1>
+    <p class="tagline" id="pg-desc">This dashboard is passcode-protected.</p>
+    <input type="password" id="pg-input" placeholder="Passcode" autocomplete="off">
+    <input type="password" id="pg-confirm" placeholder="Confirm passcode" autocomplete="off" style="display:none;">
+    <div class="passcode-err" id="pg-err"></div>
+    <button class="btn-upload" id="pg-submit" style="width:100%;">Unlock</button>
+    <button class="passcode-reset" id="pg-reset">Reset passcode for this device</button>
+  </div>
+</div>
 
 <!-- ══════════ UPLOAD ══════════ -->
 <div id="upload-screen">
   <div class="upload-card">
     <h1>📊 Job Application Dashboard</h1>
     <p class="tagline">Upload a CSV export from your Notion database to generate your dashboard.</p>
-    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+    <div id="drop-zone" onclick="openFilePicker()">
       <div class="dz-icon">📂</div>
       <div class="dz-main">Drop CSV here or click to browse</div>
       <div class="dz-sub">Accepts .csv files exported from Notion</div>
@@ -127,7 +147,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     </div>
     <div style="display:flex;gap:.5rem;">
       <button class="btn-upload btn-secondary" onclick="promptForPat()">🔑 Token</button>
-      <button class="btn-upload" onclick="resetToUpload()">↑ Upload New CSV</button>
+      <button class="btn-upload" onclick="requestUploadScreen()">↑ Upload New CSV</button>
     </div>
   </div>
 
@@ -176,6 +196,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <h3>Role Theme Trends by Quarter <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(Oct 2025 onwards)</span></h3>
       <div class="chart-wrap"><canvas id="c-themes"></canvas></div>
     </div>
+  </div>
+</div>
+
+<!-- ══════════ UPLOAD PASSCODE MODAL ══════════ -->
+<div id="upload-pass-modal" class="pat-modal-overlay">
+  <div class="upload-card pat-card">
+    <h1 id="upm-title">🔒 Upload Passcode</h1>
+    <p class="tagline" id="upm-desc">Enter the passcode to upload a new CSV.</p>
+    <input type="password" id="upm-input" placeholder="Passcode" autocomplete="off">
+    <input type="password" id="upm-confirm" placeholder="Confirm passcode" autocomplete="off" style="display:none;">
+    <div class="passcode-err" id="upm-err"></div>
+    <div class="pat-actions">
+      <button class="btn-upload" id="upm-save-btn">Unlock</button>
+      <button class="btn-upload btn-secondary" id="upm-cancel-btn">Cancel</button>
+    </div>
+    <button class="passcode-reset" id="upm-reset">Reset passcode for this device</button>
   </div>
 </div>
 
@@ -285,6 +321,132 @@ async function saveCsvToGitHub(csvText,filename){
   } catch(err){
     ghStatus('Could not save to GitHub: network error.','err');
   }
+}
+
+// ═══ Passcode gates ═══
+// Neither passcode is hardcoded: the first time a gate is hit with no stored
+// hash, it prompts to set one, hashes it (SHA-256), and stores only the hash.
+// This is a casual deterrent, not real security — it's a static page in a
+// public repo, so the check itself is fully visible/bypassable via view-source.
+const VIEW_HASH_KEY='jobdash_view_pass_hash',VIEW_UNLOCK_KEY='jobdash_view_unlocked';
+const UPLOAD_HASH_KEY='jobdash_upload_pass_hash',UPLOAD_UNLOCK_KEY='jobdash_upload_unlocked';
+
+async function sha256Hex(text){
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// Full-page gate blocking the whole dashboard until the view passcode is entered.
+function initPasscodeGate(){
+  return new Promise(resolve=>{
+    if(localStorage.getItem(VIEW_UNLOCK_KEY)==='true'){
+      document.getElementById('passcode-gate').style.display='none';
+      resolve();return;
+    }
+    const gate=document.getElementById('passcode-gate');
+    const title=document.getElementById('pg-title'),desc=document.getElementById('pg-desc');
+    const input=document.getElementById('pg-input'),confirmEl=document.getElementById('pg-confirm');
+    const err=document.getElementById('pg-err'),submit=document.getElementById('pg-submit'),resetBtn=document.getElementById('pg-reset');
+    function render(){
+      const setup=!localStorage.getItem(VIEW_HASH_KEY);
+      title.textContent=setup?'🔒 Set a Passcode':'🔒 Enter Passcode';
+      desc.textContent=setup?'Create a passcode to protect this dashboard on this device.':'This dashboard is passcode-protected.';
+      confirmEl.style.display=setup?'block':'none';
+      resetBtn.style.display=setup?'none':'block';
+      input.value='';confirmEl.value='';err.textContent='';
+      input.focus();
+    }
+    render();
+    async function onSubmit(){
+      const setup=!localStorage.getItem(VIEW_HASH_KEY);
+      const v=input.value;
+      if(!v){err.textContent='Passcode cannot be empty.';return;}
+      if(setup){
+        if(v!==confirmEl.value){err.textContent='Passcodes do not match.';return;}
+        localStorage.setItem(VIEW_HASH_KEY,await sha256Hex(v));
+        localStorage.setItem(VIEW_UNLOCK_KEY,'true');
+        gate.style.display='none';resolve();
+      } else if(await sha256Hex(v)===localStorage.getItem(VIEW_HASH_KEY)){
+        localStorage.setItem(VIEW_UNLOCK_KEY,'true');
+        gate.style.display='none';resolve();
+      } else {
+        err.textContent='Incorrect passcode.';input.value='';input.focus();
+      }
+    }
+    submit.addEventListener('click',onSubmit);
+    input.addEventListener('keydown',e=>{if(e.key==='Enter')onSubmit();});
+    confirmEl.addEventListener('keydown',e=>{if(e.key==='Enter')onSubmit();});
+    resetBtn.addEventListener('click',()=>{
+      if(!window.confirm('Reset the passcode for this device? You will need to set a new one.'))return;
+      localStorage.removeItem(VIEW_HASH_KEY);localStorage.removeItem(VIEW_UNLOCK_KEY);render();
+    });
+  });
+}
+
+// Modal gate required to initiate a CSV upload. Resolves true if unlocked, false if cancelled.
+function requireUploadUnlock(){
+  return new Promise(resolve=>{
+    if(localStorage.getItem(UPLOAD_UNLOCK_KEY)==='true'){resolve(true);return;}
+    const modal=document.getElementById('upload-pass-modal');
+    const title=document.getElementById('upm-title'),desc=document.getElementById('upm-desc');
+    const input=document.getElementById('upm-input'),confirmEl=document.getElementById('upm-confirm');
+    const err=document.getElementById('upm-err'),saveBtn=document.getElementById('upm-save-btn');
+    const cancelBtn=document.getElementById('upm-cancel-btn'),resetBtn=document.getElementById('upm-reset');
+    function render(){
+      const setup=!localStorage.getItem(UPLOAD_HASH_KEY);
+      title.textContent=setup?'🔒 Set an Upload Passcode':'🔒 Upload Passcode';
+      desc.textContent=setup?'Create a passcode required to upload a new CSV on this device.':'Enter the passcode to upload a new CSV.';
+      confirmEl.style.display=setup?'block':'none';
+      resetBtn.style.display=setup?'none':'block';
+      input.value='';confirmEl.value='';err.textContent='';
+    }
+    render();
+    modal.style.display='flex';
+    input.focus();
+    function cleanup(){
+      modal.style.display='none';
+      saveBtn.removeEventListener('click',onSave);
+      cancelBtn.removeEventListener('click',onCancel);
+      resetBtn.removeEventListener('click',onReset);
+      input.removeEventListener('keydown',onKey);
+      confirmEl.removeEventListener('keydown',onKey);
+    }
+    async function onSave(){
+      const setup=!localStorage.getItem(UPLOAD_HASH_KEY);
+      const v=input.value;
+      if(!v){err.textContent='Passcode cannot be empty.';return;}
+      if(setup){
+        if(v!==confirmEl.value){err.textContent='Passcodes do not match.';return;}
+        localStorage.setItem(UPLOAD_HASH_KEY,await sha256Hex(v));
+        localStorage.setItem(UPLOAD_UNLOCK_KEY,'true');
+        cleanup();resolve(true);
+      } else if(await sha256Hex(v)===localStorage.getItem(UPLOAD_HASH_KEY)){
+        localStorage.setItem(UPLOAD_UNLOCK_KEY,'true');
+        cleanup();resolve(true);
+      } else {
+        err.textContent='Incorrect passcode.';input.value='';input.focus();
+      }
+    }
+    function onCancel(){cleanup();resolve(false);}
+    function onReset(){
+      if(!window.confirm('Reset the upload passcode for this device? You will need to set a new one.'))return;
+      localStorage.removeItem(UPLOAD_HASH_KEY);localStorage.removeItem(UPLOAD_UNLOCK_KEY);render();
+    }
+    function onKey(e){if(e.key==='Enter')onSave();}
+    saveBtn.addEventListener('click',onSave);
+    cancelBtn.addEventListener('click',onCancel);
+    resetBtn.addEventListener('click',onReset);
+    input.addEventListener('keydown',onKey);
+    confirmEl.addEventListener('keydown',onKey);
+  });
+}
+
+async function openFilePicker(){
+  if(await requireUploadUnlock())document.getElementById('file-input').click();
+}
+
+async function requestUploadScreen(){
+  if(await requireUploadUnlock())resetToUpload();
 }
 
 // ═══ CSV parser ═══
@@ -628,10 +790,12 @@ function handleFile(file){
 async function tryAutoLoad(){
   try{
     const res=await fetch('./'+DATA_PATH,{cache:'no-store'});
-    if(!res.ok)return;
-    const csvText=await res.text();
-    renderFromCsvText(csvText,'data.csv (from repo)',{silent:true});
-  } catch(err){/* stay on upload screen */}
+    if(res.ok){
+      const csvText=await res.text();
+      if(renderFromCsvText(csvText,'data.csv (from repo)',{silent:true}))return;
+    }
+  } catch(err){/* fall through to upload screen */}
+  document.getElementById('upload-screen').style.display='flex';
 }
 
 function showErr(msg){
@@ -649,11 +813,14 @@ function resetToUpload(){
 const dz=document.getElementById('drop-zone');
 dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});
 dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
-dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');handleFile(e.dataTransfer.files[0]);});
+dz.addEventListener('drop',async e=>{
+  e.preventDefault();dz.classList.remove('drag-over');
+  if(await requireUploadUnlock())handleFile(e.dataTransfer.files[0]);
+});
 document.getElementById('file-input').addEventListener('change',e=>handleFile(e.target.files[0]));
 
-// Load the last-committed CSV from the repo, if any, so the dashboard renders on open.
-tryAutoLoad();
+// Gate the whole dashboard behind a view passcode, then auto-load the last CSV.
+initPasscodeGate().then(tryAutoLoad);
 </script>
 </body>
 </html>
