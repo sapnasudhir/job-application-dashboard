@@ -73,6 +73,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 #err-banner{display:none;background:#fff4f4;border:1px solid #f5c2c2;border-radius:10px;padding:.9rem 1.1rem;color:#c0392b;font-size:.82rem;margin-bottom:1rem;}
 #col-debug{display:none;background:#fffbea;border:1px solid #f5e6a2;border-radius:8px;padding:.7rem 1rem;font-size:.72rem;color:#7a6000;margin-bottom:1rem;line-height:1.6;}
+
+/* ── GitHub sync ── */
+.gh-status{font-size:.72rem;margin-top:.35rem;min-height:1em;}
+.gh-status.pending{color:#999;}
+.gh-status.ok{color:#2e9e5b;}
+.gh-status.warn{color:#b8860b;}
+.gh-status.err{color:#c0392b;}
+.btn-secondary{background:#eee;color:#555;}
+.btn-secondary:hover{background:#e2e2e2;}
+.pat-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:1.5rem;z-index:1000;}
+.pat-card{max-width:420px;}
+#pat-input{width:100%;padding:.6rem .75rem;border:1px solid #c8cdd8;border-radius:8px;font-size:.85rem;margin-bottom:1.25rem;font-family:inherit;}
+.pat-actions{display:flex;gap:.6rem;margin-top:1.25rem;}
+.pat-actions .btn-upload{flex:1;}
 </style>
 </head>
 <body>
@@ -109,8 +123,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div>
       <div class="dash-title">📊 Job Application Dashboard</div>
       <div class="dash-meta" id="dash-meta"></div>
+      <div class="gh-status" id="gh-status"></div>
     </div>
-    <button class="btn-upload" onclick="resetToUpload()">↑ Upload New CSV</button>
+    <div style="display:flex;gap:.5rem;">
+      <button class="btn-upload btn-secondary" onclick="promptForPat()">🔑 Token</button>
+      <button class="btn-upload" onclick="resetToUpload()">↑ Upload New CSV</button>
+    </div>
   </div>
 
   <div class="stats-row">
@@ -161,12 +179,113 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   </div>
 </div>
 
+<!-- ══════════ GITHUB TOKEN MODAL ══════════ -->
+<div id="pat-modal" class="pat-modal-overlay">
+  <div class="upload-card pat-card">
+    <h1>🔑 Connect GitHub</h1>
+    <p class="tagline">To save an uploaded CSV back to the repo, paste a fine-grained GitHub personal access token scoped to just <strong>job-application-dashboard</strong> with <strong>Contents: Read and write</strong> permission.</p>
+    <input type="password" id="pat-input" placeholder="github_pat_...">
+    <div class="how-to">
+      <strong>Create a token</strong>
+      <ol>
+        <li>Go to <code>github.com/settings/tokens?type=beta</code></li>
+        <li>Generate new token, restrict to repository <strong>job-application-dashboard</strong></li>
+        <li>Permissions → Contents → <strong>Read and write</strong></li>
+        <li>Copy the token and paste it above</li>
+      </ol>
+    </div>
+    <div class="pat-actions">
+      <button class="btn-upload" id="pat-save-btn">Save & Continue</button>
+      <button class="btn-upload btn-secondary" id="pat-cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
 // ═══ Chart registry ═══
 const CH={};
 function kill(id){if(CH[id]){CH[id].destroy();delete CH[id];}}
+
+// ═══ GitHub persistence ═══
+const GH_OWNER='sapnasudhir',GH_REPO='job-application-dashboard',GH_BRANCH='main',DATA_PATH='data/data.csv';
+const GH_PAT_KEY='jobdash_gh_pat';
+
+function getStoredPat(){return localStorage.getItem(GH_PAT_KEY)||'';}
+function setStoredPat(v){if(v)localStorage.setItem(GH_PAT_KEY,v);else localStorage.removeItem(GH_PAT_KEY);}
+
+function b64EncodeUtf8(str){
+  const bytes=new TextEncoder().encode(str);
+  let binary='';
+  const chunk=0x8000;
+  for(let i=0;i<bytes.length;i+=chunk)binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));
+  return btoa(binary);
+}
+
+// Shows the token modal; resolves with the entered token, or null if cancelled/cleared.
+function promptForPat(){
+  return new Promise(resolve=>{
+    const modal=document.getElementById('pat-modal');
+    const input=document.getElementById('pat-input');
+    const saveBtn=document.getElementById('pat-save-btn');
+    const cancelBtn=document.getElementById('pat-cancel-btn');
+    input.value=getStoredPat();
+    modal.style.display='flex';
+    input.focus();
+    function cleanup(){
+      modal.style.display='none';
+      saveBtn.removeEventListener('click',onSave);
+      cancelBtn.removeEventListener('click',onCancel);
+    }
+    function onSave(){const v=input.value.trim();setStoredPat(v);cleanup();resolve(v||null);}
+    function onCancel(){cleanup();resolve(null);}
+    saveBtn.addEventListener('click',onSave);
+    cancelBtn.addEventListener('click',onCancel);
+  });
+}
+
+function ghStatus(text,cls){
+  const el=document.getElementById('gh-status');
+  if(!el)return;
+  el.textContent=text;
+  el.className='gh-status'+(cls?' '+cls:'');
+}
+
+async function saveCsvToGitHub(csvText,filename){
+  let pat=getStoredPat();
+  if(!pat){
+    pat=await promptForPat();
+    if(!pat){ghStatus('Not saved to GitHub (no token provided).','warn');return;}
+  }
+  ghStatus('Saving to GitHub…','pending');
+  const apiBase=`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${DATA_PATH}`;
+  const headers={'Authorization':`Bearer ${pat}`,'Accept':'application/vnd.github+json'};
+  try{
+    let sha=null;
+    const getRes=await fetch(`${apiBase}?ref=${GH_BRANCH}`,{headers});
+    if(getRes.status===200){sha=(await getRes.json()).sha;}
+    else if(getRes.status===401||getRes.status===403){
+      setStoredPat('');
+      ghStatus('GitHub token invalid or expired — click 🔑 Token to re-enter it.','err');
+      return;
+    }
+    const body={message:`Update data.csv — ${new Date().toISOString()} (${filename})`,content:b64EncodeUtf8(csvText),branch:GH_BRANCH};
+    if(sha)body.sha=sha;
+    const putRes=await fetch(apiBase,{method:'PUT',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(putRes.ok){
+      ghStatus('Saved to GitHub ✓','ok');
+    } else if(putRes.status===401||putRes.status===403){
+      setStoredPat('');
+      ghStatus('GitHub token invalid or expired — click 🔑 Token to re-enter it.','err');
+    } else {
+      const j=await putRes.json().catch(()=>({}));
+      ghStatus(`Could not save to GitHub: ${j.message||putRes.status}`,'err');
+    }
+  } catch(err){
+    ghStatus('Could not save to GitHub: network error.','err');
+  }
+}
 
 // ═══ CSV parser ═══
 function parseCSV(txt){
@@ -459,6 +578,34 @@ function renderDashboard(records){
 }
 
 // ═══ File handling ═══
+// Parses+renders CSV text. Returns true on success. opts.silent suppresses error UI
+// (used for the auto-load-from-repo path, where a missing/invalid file just means
+// "stay on the upload screen" rather than an error to show the user).
+function renderFromCsvText(csvText,filename,opts={}){
+  const allRows=parseCSV(csvText);
+  if(allRows.length<2){
+    if(!opts.silent)showErr('File appears empty or unreadable.');
+    return false;
+  }
+  const[header,...data]=allRows;
+  const records=processData(data,header);
+  if(records.length===0){
+    if(!opts.silent){
+      document.getElementById('upload-screen').style.display='none';
+      document.getElementById('dashboard').style.display='block';
+      showErr('No records found for Jun 2025 or later. Check the column mapping above.');
+    }
+    return false;
+  }
+  document.getElementById('upload-screen').style.display='none';
+  document.getElementById('dashboard').style.display='block';
+  document.getElementById('err-banner').style.display='none';
+  document.getElementById('dash-meta').textContent=
+    `${records.length} records (Jun 2025+) · ${filename} · ${new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
+  renderDashboard(records);
+  return true;
+}
+
 function handleFile(file){
   if(!file)return;
   if(!file.name.toLowerCase().match(/\.(csv|txt)$/)){
@@ -467,22 +614,24 @@ function handleFile(file){
   const reader=new FileReader();
   reader.onload=e=>{
     try{
-      const allRows=parseCSV(e.target.result);
-      if(allRows.length<2){showErr('File appears empty or unreadable.');return;}
-      const[header,...data]=allRows;
-      const records=processData(data,header);
-      document.getElementById('upload-screen').style.display='none';
-      document.getElementById('dashboard').style.display='block';
-      if(records.length===0){
-        showErr('No records found for Jun 2025 or later. Check the column mapping above.');return;
-      }
-      document.getElementById('err-banner').style.display='none';
-      document.getElementById('dash-meta').textContent=
-        `${records.length} records (Jun 2025+) · ${file.name} · ${new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
-      renderDashboard(records);
+      const csvText=e.target.result;
+      const ok=renderFromCsvText(csvText,file.name);
+      if(ok)saveCsvToGitHub(csvText,file.name);
     } catch(err){showErr('Parse error: '+err.message);console.error(err);}
   };
   reader.readAsText(file);
+}
+
+// Tries to load the last-committed CSV from the repo so the dashboard renders
+// immediately on open. Falls back silently to the upload screen if there's no
+// data yet (first run) or the fetch fails.
+async function tryAutoLoad(){
+  try{
+    const res=await fetch('./'+DATA_PATH,{cache:'no-store'});
+    if(!res.ok)return;
+    const csvText=await res.text();
+    renderFromCsvText(csvText,'data.csv (from repo)',{silent:true});
+  } catch(err){/* stay on upload screen */}
 }
 
 function showErr(msg){
@@ -493,6 +642,7 @@ function resetToUpload(){
   document.getElementById('dashboard').style.display='none';
   document.getElementById('err-banner').style.display='none';
   document.getElementById('col-debug').style.display='none';
+  ghStatus('','');
 }
 
 // Drag & drop
@@ -501,6 +651,9 @@ dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-ove
 dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
 dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');handleFile(e.dataTransfer.files[0]);});
 document.getElementById('file-input').addEventListener('change',e=>handleFile(e.target.files[0]));
+
+// Load the last-committed CSV from the repo, if any, so the dashboard renders on open.
+tryAutoLoad();
 </script>
 </body>
 </html>
