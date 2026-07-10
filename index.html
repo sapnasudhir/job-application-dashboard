@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Job Application Dashboard",
+  "schemaVersion": 1,
+  "description": "Job application dashboard. Upload a Notion CSV export. Filters to Jun 2025+. Charts: monthly applications (Sep 2025+), status donut with counts, quarterly tag trends (top 3 + Other, Sep 2025+), top 5 companies by record count (URL stripped), role theme trends by quarter (5 functional themes, Sep 2025+).",
+  "mcpTools": [
+    "mcp__35b0ec1d-2d5d-47d9-b0ad-59f36baa57cb__notion-search",
+    "mcp__35b0ec1d-2d5d-47d9-b0ad-59f36baa57cb__notion-fetch",
+    "mcp__17be530c-8a12-4076-a056-d26e1856ca64__create_file",
+    "mcp__17be530c-8a12-4076-a056-d26e1856ca64__download_file_content",
+    "mcp__17be530c-8a12-4076-a056-d26e1856ca64__search_files"
+  ],
+  "mcpServerNames": [
+    "Notion",
+    "Notion",
+    "Google Drive",
+    "Google Drive",
+    "Google Drive"
+  ]
+}
+</script>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Application Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<style>
+:root{color-scheme:light;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f4f5f9;color:#1a1a2e;min-height:100vh;}
+
+/* ── Upload ── */
+#upload-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:2rem;}
+.upload-card{background:#fff;border-radius:18px;padding:2.5rem 2rem;max-width:460px;width:100%;box-shadow:0 6px 30px rgba(0,0,0,.09);text-align:center;}
+.upload-card h1{font-size:1.4rem;font-weight:700;margin-bottom:.4rem;}
+.tagline{color:#777;font-size:.875rem;margin-bottom:1.75rem;line-height:1.5;}
+#drop-zone{border:2px dashed #c8cdd8;border-radius:12px;padding:2.25rem 1.5rem;cursor:pointer;transition:border-color .2s,background .2s;background:#fafbfd;}
+#drop-zone:hover,#drop-zone.drag-over{border-color:#667eea;background:#f0f2ff;}
+.dz-icon{font-size:2.2rem;margin-bottom:.65rem;}
+.dz-main{font-weight:600;color:#333;font-size:.95rem;margin-bottom:.3rem;}
+.dz-sub{font-size:.78rem;color:#999;}
+#file-input{display:none;}
+.how-to{margin-top:1.5rem;background:#f8f9ff;border:1px solid #e4e8f8;border-radius:10px;padding:1rem 1.25rem;text-align:left;font-size:.8rem;color:#555;}
+.how-to strong{color:#333;display:block;margin-bottom:.5rem;}
+.how-to ol{padding-left:1.15rem;}
+.how-to li{margin-bottom:.3rem;line-height:1.45;}
+.how-to code{background:#eee;padding:1px 5px;border-radius:4px;font-size:.75rem;}
+
+/* ── Dashboard ── */
+#dashboard{display:none;padding:1.25rem 1.5rem 2rem;}
+.dash-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.25rem;gap:1rem;}
+.dash-title{font-size:1.2rem;font-weight:700;line-height:1;}
+.dash-meta{font-size:.75rem;color:#999;margin-top:.35rem;}
+.btn-upload{background:#667eea;color:#fff;border:none;border-radius:8px;padding:.45rem 1rem;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .2s;}
+.btn-upload:hover{background:#5a6fd8;}
+
+/* Stats */
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1rem;}
+.stat{background:#fff;border-radius:12px;padding:1.1rem 1.4rem;box-shadow:0 2px 8px rgba(0,0,0,.05);}
+.stat .lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#999;margin-bottom:.35rem;}
+.stat .val{font-size:1.9rem;font-weight:800;color:#1a1a2e;line-height:1;}
+.stat .sub{font-size:.72rem;color:#bbb;margin-top:.3rem;}
+
+/* Charts */
+.charts-row{display:grid;gap:1rem;margin-bottom:1rem;}
+.row-1{grid-template-columns:1fr;}
+.row-2{grid-template-columns:1fr 1fr;}
+.card{background:#fff;border-radius:12px;padding:1.15rem 1.25rem;box-shadow:0 2px 8px rgba(0,0,0,.05);}
+.card h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:#999;font-weight:700;margin-bottom:.85rem;}
+.chart-wrap{position:relative;height:210px;}
+
+#err-banner{display:none;background:#fff4f4;border:1px solid #f5c2c2;border-radius:10px;padding:.9rem 1.1rem;color:#c0392b;font-size:.82rem;margin-bottom:1rem;}
+#col-debug{display:none;background:#fffbea;border:1px solid #f5e6a2;border-radius:8px;padding:.7rem 1rem;font-size:.72rem;color:#7a6000;margin-bottom:1rem;line-height:1.6;}
+</style>
+</head>
+<body>
+
+<!-- ══════════ UPLOAD ══════════ -->
+<div id="upload-screen">
+  <div class="upload-card">
+    <h1>📊 Job Application Dashboard</h1>
+    <p class="tagline">Upload a CSV export from your Notion database to generate your dashboard.</p>
+    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <div class="dz-icon">📂</div>
+      <div class="dz-main">Drop CSV here or click to browse</div>
+      <div class="dz-sub">Accepts .csv files exported from Notion</div>
+    </div>
+    <input type="file" id="file-input" accept=".csv,.txt">
+    <div class="how-to">
+      <strong>How to export from Notion</strong>
+      <ol>
+        <li>Open <strong>Resumes and JDs</strong> in Notion</li>
+        <li>Click <strong>···</strong> → <code>Export</code></li>
+        <li>Format: <strong>CSV</strong> · Include: <strong>Everything</strong></li>
+        <li>Upload the .csv file here</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ DASHBOARD ══════════ -->
+<div id="dashboard">
+  <div id="err-banner"></div>
+  <div id="col-debug"></div>
+
+  <div class="dash-header">
+    <div>
+      <div class="dash-title">📊 Job Application Dashboard</div>
+      <div class="dash-meta" id="dash-meta"></div>
+    </div>
+    <button class="btn-upload" onclick="resetToUpload()">↑ Upload New CSV</button>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat">
+      <div class="lbl">Total Applications</div>
+      <div class="val" id="s-total">—</div>
+      <div class="sub">Jun 2025 onwards</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Interviewed</div>
+      <div class="val" id="s-interviewed">—</div>
+      <div class="sub">Done or In Progress</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Added Last 10 Days</div>
+      <div class="val" id="s-recent">—</div>
+      <div class="sub" id="s-recent-range">—</div>
+    </div>
+  </div>
+
+  <div class="charts-row row-1">
+    <div class="card">
+      <h3>Applications Created by Month <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(Sep 2025 onwards)</span></h3>
+      <div class="chart-wrap"><canvas id="c-monthly"></canvas></div>
+    </div>
+  </div>
+
+  <div class="charts-row row-2">
+    <div class="card">
+      <h3>Application Status</h3>
+      <div class="chart-wrap"><canvas id="c-status"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Tag Distribution by Quarter <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(Sep 2025 onwards)</span></h3>
+      <div class="chart-wrap"><canvas id="c-tags"></canvas></div>
+    </div>
+  </div>
+
+  <div class="charts-row row-2">
+    <div class="card">
+      <h3>Top 5 Companies</h3>
+      <div class="chart-wrap"><canvas id="c-companies"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Role Theme Trends by Quarter <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(Sep 2025 onwards)</span></h3>
+      <div class="chart-wrap"><canvas id="c-themes"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ═══ Chart registry ═══
+const CH={};
+function kill(id){if(CH[id]){CH[id].destroy();delete CH[id];}}
+
+// ═══ CSV parser ═══
+function parseCSV(txt){
+  const rows=[];let cols=[],field='',inQ=false;
+  for(let i=0;i<txt.length;i++){
+    const c=txt[i],n=txt[i+1];
+    if(inQ){
+      if(c==='"'&&n==='"'){field+='"';i++;}
+      else if(c==='"'){inQ=false;}
+      else field+=c;
+    } else {
+      if(c==='"')inQ=true;
+      else if(c===','){cols.push(field);field='';}
+      else if(c==='\r'&&n==='\n'){cols.push(field);field='';rows.push(cols);cols=[];i++;}
+      else if(c==='\n'||c==='\r'){cols.push(field);field='';rows.push(cols);cols=[];}
+      else field+=c;
+    }
+  }
+  if(field!==''||cols.length){cols.push(field);if(cols.some(f=>f.trim()))rows.push(cols);}
+  return rows;
+}
+
+// ═══ Column detection ═══
+function detectCols(h){
+  const hl=h.map(x=>(x||'').toLowerCase().trim());
+  const find=(...ts)=>{
+    for(const t of ts){const i=hl.findIndex(x=>x===t.toLowerCase());if(i>=0)return i;}
+    for(const t of ts){const i=hl.findIndex(x=>x.includes(t.toLowerCase()));if(i>=0)return i;}
+    return -1;
+  };
+  return{
+    position:find('position','name','title'),
+    created: find('created time','created'),
+    status:  find('application status','status'),
+    tags:    find('tags','tag'),
+    company: find('company','companies','employer','organization')
+  };
+}
+
+// ═══ Date helpers ═══
+function pd(s){if(!s)return null;const d=new Date(s);return isNaN(d.getTime())?null:d;}
+
+const JUN2025=new Date(2025,5,1);   // Jun 1 2025
+const SEP2025=new Date(2025,8,1);   // Sep 1 2025
+
+function monthInfo(date){
+  const y=date.getFullYear(),m=date.getMonth();
+  return{
+    key:`${y}-${String(m).padStart(2,'0')}`,
+    label:date.toLocaleDateString('en-US',{month:'short',year:'numeric'})
+  };
+}
+
+// Custom quarters anchored to Sep: Sep-Nov | Dec-Feb | Mar-May | Jun-Aug
+function qtrInfo(date){
+  const y=date.getFullYear(),m=date.getMonth();
+  let sM,sY,label;
+  if(m>=8&&m<=10)     {sM=8; sY=y;   label=`Sep–Nov ${y}`;}
+  else if(m===11)     {sM=11;sY=y;   label=`Dec ${y}–Feb ${y+1}`;}
+  else if(m<=1)       {sM=11;sY=y-1; label=`Dec ${y-1}–Feb ${y}`;}
+  else if(m>=2&&m<=4) {sM=2; sY=y;   label=`Mar–May ${y}`;}
+  else                {sM=5; sY=y;   label=`Jun–Aug ${y}`;}
+  return{key:`${sY}-${String(sM).padStart(2,'0')}`,label};
+}
+
+// ═══ Company name cleanup ═══
+// Strips " (https://...)" suffixes Notion appends to relation fields
+function cleanCo(raw){
+  if(!raw)return[];
+  return raw.split(',')
+    .map(p=>p.replace(/\s*\(https?:\/\/[^)]*\)/g,'').replace(/\s*\[https?:\/\/[^\]]*\]/g,'').trim())
+    .filter(Boolean);
+}
+
+// ═══ Role theme classifier (5 functional buckets) ═══
+function roleTheme(pos){
+  const t=(pos||'').replace(/\*\*/g,'').toUpperCase();
+  // Architecture & Solutions — check before Technology so "Enterprise Architect" routes here
+  if(/\bARCHITECT\b|ENTERPRISE ARCHITECT|SOLUTION ARCHITECT|ENTERPRISE APPLICATION/.test(t))
+    return'Architecture & Solutions';
+  // Data, AI & Analytics
+  if(/\bDATA\b|\bCDO\b|ANALYTICS?|BUSINESS INTELLIGENCE|\bBI\b|\bAI\b|MACHINE LEARNING|\bML\b|INSIGHT|INTELLIGENCE/.test(t))
+    return'Data, AI & Analytics';
+  // Product & Strategy
+  if(/\bPRODUCT\b|\bCPO\b|\bGROWTH\b|STRATEGY|INNOVATION|DIGITAL/.test(t))
+    return'Product & Strategy';
+  // Engineering & Technology
+  if(/ENGINEER|ENGINEERING|TECHNOLOGY|\bCTO\b|\bCIO\b|\bCISO\b|INFRASTRUCTURE|DEVOPS|SOFTWARE|PLATFORM/.test(t))
+    return'Engineering & Technology';
+  // Everything else → Operations & Management
+  return'Operations & Management';
+}
+
+// ═══ Colors ═══
+const STATUS_COL={
+  'Applied':'#667eea','In progress - Interviewing':'#43e97b',
+  'Done - Interviewed':'#4facfe','Done - Not Selected':'#f5576c',
+  'Done - Rejected':'#fa709a','Withdrawn':'#fee140','No Response':'#aaa'
+};
+const THEME_COL={
+  'Architecture & Solutions':'#667eea','Data, AI & Analytics':'#4facfe',
+  'Product & Strategy':'#43e97b','Engineering & Technology':'#f093fb',
+  'Operations & Management':'#fa709a'
+};
+const THEMES=['Architecture & Solutions','Data, AI & Analytics','Product & Strategy','Engineering & Technology','Operations & Management'];
+const TAG_PAL=['#667eea','#43e97b','#f093fb','#fa709a']; // top3 + Other
+
+// ═══ Process data ═══
+function processData(rows,header){
+  const cols=detectCols(header);
+  // Column debug panel
+  const dbg=document.getElementById('col-debug');
+  dbg.innerHTML='<strong>Column mapping:</strong> '+
+    Object.entries(cols).map(([k,v])=>`${k} → <em>${v<0?'NOT FOUND':header[v]}</em>`).join(' &nbsp;·&nbsp; ');
+  dbg.style.display='block';
+
+  const records=[];
+  for(const row of rows){
+    if(!row||row.length<2)continue;
+    const g=i=>(i>=0&&i<row.length)?(row[i]||'').trim():'';
+    const created=pd(g(cols.created));
+    if(!created||created<JUN2025)continue;  // exclude pre-Jun 2025
+    records.push({
+      created,
+      status:  g(cols.status),
+      tags:    g(cols.tags)?g(cols.tags).split(',').map(t=>t.trim()).filter(Boolean):[],
+      companies: cleanCo(g(cols.company)),
+      position:  g(cols.position)
+    });
+  }
+  return records;
+}
+
+// ═══ Render ═══
+function renderDashboard(records){
+  // ── Stats ──
+  document.getElementById('s-total').textContent=records.length;
+  document.getElementById('s-interviewed').textContent=records.filter(r=>
+    r.status==='Done - Interviewed'||r.status==='In progress - Interviewing').length;
+  const now=new Date();
+  const cutoff=new Date(now);cutoff.setDate(cutoff.getDate()-10);cutoff.setHours(0,0,0,0);
+  document.getElementById('s-recent').textContent=records.filter(r=>r.created>=cutoff).length;
+  const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  document.getElementById('s-recent-range').textContent=`${fmt(cutoff)} – ${fmt(now)}`;
+
+  // ── Monthly bar (Sep 2025+) ──
+  const mMap={};
+  for(const r of records){
+    if(r.created<SEP2025)continue;
+    const{key,label}=monthInfo(r.created);
+    if(!mMap[key])mMap[key]={label,n:0};
+    mMap[key].n++;
+  }
+  const mKeys=Object.keys(mMap).sort();
+
+  kill('monthly');
+  CH.monthly=new Chart(document.getElementById('c-monthly'),{
+    type:'bar',
+    data:{labels:mKeys.map(k=>mMap[k].label),datasets:[{
+      data:mKeys.map(k=>mMap[k].n),backgroundColor:'#667eea',borderRadius:4,label:'Applications'
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
+    }
+  });
+
+  // ── Status donut ──
+  const stMap={};
+  for(const r of records){const s=r.status||'Unknown';stMap[s]=(stMap[s]||0)+1;}
+  const stKeys=Object.keys(stMap).sort((a,b)=>stMap[b]-stMap[a]);
+
+  kill('status');
+  CH.status=new Chart(document.getElementById('c-status'),{
+    type:'doughnut',
+    data:{labels:stKeys,datasets:[{
+      data:stKeys.map(k=>stMap[k]),
+      backgroundColor:stKeys.map(k=>STATUS_COL[k]||'#ccc'),
+      borderWidth:2,borderColor:'#fff'
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'58%',
+      plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:8,
+        generateLabels(chart){
+          const ds=chart.data.datasets[0];
+          return chart.data.labels.map((lbl,i)=>({
+            text:`${lbl}  (${ds.data[i]})`,fillStyle:ds.backgroundColor[i],
+            strokeStyle:'#fff',lineWidth:2,hidden:false,index:i
+          }));
+        }
+      }}}
+    }
+  });
+
+  // ── Tags: stacked bar by quarter, top 3 + Other (Sep 2025+) ──
+  const tagRecs=records.filter(r=>r.created>=SEP2025);
+  // Count all tags to find top 3
+  const tagTotals={};
+  for(const r of tagRecs)for(const t of r.tags)tagTotals[t]=(tagTotals[t]||0)+1;
+  const top3=Object.entries(tagTotals).sort((a,b)=>b[1]-a[1]).slice(0,3).map(e=>e[0]);
+  const tagSeries=[...top3,'Other'];
+  // Build per-quarter counts
+  const tagQMap={};
+  for(const r of tagRecs){
+    const{key,label}=qtrInfo(r.created);
+    if(!tagQMap[key])tagQMap[key]={label,counts:{}};
+    if(r.tags.length===0){
+      // no tags — don't add to Other to avoid inflating
+    } else {
+      for(const t of r.tags){
+        const bucket=top3.includes(t)?t:'Other';
+        tagQMap[key].counts[bucket]=(tagQMap[key].counts[bucket]||0)+1;
+      }
+    }
+  }
+  const tagQKeys=Object.keys(tagQMap).sort();
+
+  kill('tags');
+  CH.tags=new Chart(document.getElementById('c-tags'),{
+    type:'bar',
+    data:{
+      labels:tagQKeys.map(k=>tagQMap[k].label),
+      datasets:tagSeries.map((tag,i)=>({
+        label:tag,
+        data:tagQKeys.map(k=>tagQMap[k].counts[tag]||0),
+        backgroundColor:TAG_PAL[i]||'#bbb',
+        stack:'tags',borderRadius:2
+      }))
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:6,boxWidth:11}}},
+      scales:{
+        y:{stacked:true,beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},
+        x:{stacked:true,grid:{display:false}}
+      }
+    }
+  });
+
+  // ── Top 5 Companies ──
+  const coMap={};
+  for(const r of records){
+    const seen=new Set();
+    for(const c of r.companies){if(c&&!seen.has(c)){coMap[c]=(coMap[c]||0)+1;seen.add(c);}}
+  }
+  const top5=Object.entries(coMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  kill('companies');
+  CH.companies=new Chart(document.getElementById('c-companies'),{
+    type:'bar',
+    data:{
+      labels:top5.map(c=>c[0]),
+      datasets:[{data:top5.map(c=>c[1]),backgroundColor:'#4facfe',borderRadius:4}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
+      plugins:{legend:{display:false}},
+      scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
+    }
+  });
+
+  // ── Role theme trends: stacked bar by quarter (Sep 2025+) ──
+  const thRecs=records.filter(r=>r.created>=SEP2025);
+  const thQMap={};
+  for(const r of thRecs){
+    const{key,label}=qtrInfo(r.created);
+    if(!thQMap[key])thQMap[key]={label,counts:{}};
+    const th=roleTheme(r.position);
+    thQMap[key].counts[th]=(thQMap[key].counts[th]||0)+1;
+  }
+  const thQKeys=Object.keys(thQMap).sort();
+
+  kill('themes');
+  CH.themes=new Chart(document.getElementById('c-themes'),{
+    type:'bar',
+    data:{
+      labels:thQKeys.map(k=>thQMap[k].label),
+      datasets:THEMES.map(th=>({
+        label:th,
+        data:thQKeys.map(k=>thQMap[k].counts[th]||0),
+        backgroundColor:THEME_COL[th]||'#aaa',
+        stack:'th',borderRadius:2
+      }))
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:6,boxWidth:11}}},
+      scales:{
+        y:{stacked:true,beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},
+        x:{stacked:true,grid:{display:false}}
+      }
+    }
+  });
+}
+
+// ═══ File handling ═══
+function handleFile(file){
+  if(!file)return;
+  if(!file.name.toLowerCase().match(/\.(csv|txt)$/)){
+    showErr('Please upload a CSV file. Export from Notion → Export → CSV format.');return;
+  }
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const allRows=parseCSV(e.target.result);
+      if(allRows.length<2){showErr('File appears empty or unreadable.');return;}
+      const[header,...data]=allRows;
+      const records=processData(data,header);
+      document.getElementById('upload-screen').style.display='none';
+      document.getElementById('dashboard').style.display='block';
+      if(records.length===0){
+        showErr('No records found for Jun 2025 or later. Check the column mapping above.');return;
+      }
+      document.getElementById('err-banner').style.display='none';
+      document.getElementById('dash-meta').textContent=
+        `${records.length} records (Jun 2025+) · ${file.name} · ${new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
+      renderDashboard(records);
+    } catch(err){showErr('Parse error: '+err.message);console.error(err);}
+  };
+  reader.readAsText(file);
+}
+
+function showErr(msg){
+  const el=document.getElementById('err-banner');el.textContent=msg;el.style.display='block';
+}
+function resetToUpload(){
+  document.getElementById('upload-screen').style.display='flex';
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('err-banner').style.display='none';
+  document.getElementById('col-debug').style.display='none';
+}
+
+// Drag & drop
+const dz=document.getElementById('drop-zone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');handleFile(e.dataTransfer.files[0]);});
+document.getElementById('file-input').addEventListener('change',e=>handleFile(e.target.files[0]));
+</script>
+</body>
+</html>
