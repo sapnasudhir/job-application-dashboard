@@ -112,6 +112,9 @@ body{
 .card h3{font-family:var(--font-head);font-size:.82rem;text-transform:uppercase;letter-spacing:.03em;color:var(--ink);font-weight:700;margin-bottom:.9rem;}
 .card h3 .constraint{font-family:var(--font-mono);font-weight:400;color:var(--graphite);font-size:.62rem;text-transform:none;letter-spacing:0;}
 .chart-wrap{position:relative;height:210px;}
+.chart-legend{display:flex;gap:1.1rem;margin-top:.7rem;font-family:var(--font-mono);font-size:.68rem;color:var(--graphite);}
+.chart-legend span{display:inline-flex;align-items:center;gap:.4rem;}
+.legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;display:inline-block;}
 
 /* Lists */
 .list-wrap{max-height:210px;overflow-y:auto;overflow-x:hidden;}
@@ -261,15 +264,12 @@ body{
 
   <div class="charts-row row-1">
     <div class="card">
-      <h3>Applications by Month <span class="constraint">(Sep 2025 onwards)</span></h3>
-      <div class="chart-wrap"><canvas id="c-monthly"></canvas></div>
-    </div>
-  </div>
-
-  <div class="charts-row row-1">
-    <div class="card">
       <h3>Aging Distribution <span class="constraint">(JDs created Jan 2026 onwards, ≤120 days aging)</span></h3>
       <div class="chart-wrap"><canvas id="c-aging"></canvas></div>
+      <div class="chart-legend">
+        <span><span class="legend-dot" style="background:#2F8F46;width:11px;height:11px;"></span>Interviewing / Interviewed</span>
+        <span><span class="legend-dot" style="background:#C1440E;"></span>Other</span>
+      </div>
     </div>
   </div>
 
@@ -281,6 +281,13 @@ body{
     <div class="card">
       <h3>Recent Interviews <span class="constraint">- Last 6 Months</span></h3>
       <div class="list-wrap" id="list-interviewed"></div>
+    </div>
+  </div>
+
+  <div class="charts-row row-1">
+    <div class="card">
+      <h3>Applications by Month <span class="constraint">(Sep 2025 onwards)</span></h3>
+      <div class="chart-wrap"><canvas id="c-monthly"></canvas></div>
     </div>
   </div>
 
@@ -789,6 +796,13 @@ function renderDashboard(records){
 
     const jdPoints=agingRecs.map(r=>({x:r.aging,y:pdf(r.aging)}));
     const jdMeta=agingRecs.map(r=>({position:r.position||'(untitled)',company:r.companies.join(', ')||'—'}));
+    // Flag applications with active/completed interview traction so their dot
+    // stands out (larger, green) against the default redline annotation dots.
+    const isHot=r=>statusEq(r.status,'Done - Interviewed')||statusEq(r.status,'In progress - Interviewing');
+    const HOT_GREEN='#2F8F46';
+    const jdColors=agingRecs.map(r=>isHot(r)?HOT_GREEN:'#C1440E');
+    const jdRadii=agingRecs.map(r=>isHot(r)?8:5);
+    const jdHoverRadii=agingRecs.map(r=>isHot(r)?10:7);
 
     CH.aging=new Chart(document.getElementById('c-aging'),{
       data:{
@@ -797,8 +811,8 @@ function renderDashboard(records){
            pointRadius:0,tension:.35,fill:false,borderWidth:2,order:2},
           {type:'line',label:'Mean',data:[{x:mean,y:0},{x:mean,y:peak}],borderColor:'#8A94A3',backgroundColor:'transparent',
            borderDash:[5,4],borderWidth:1.5,pointRadius:0,fill:false,order:1},
-          {type:'scatter',label:'Applications',data:jdPoints,backgroundColor:'#C1440E',borderColor:'#F6F1E4',
-           borderWidth:1,pointRadius:5,pointHoverRadius:7,order:0}
+          {type:'scatter',label:'Applications',data:jdPoints,backgroundColor:jdColors,borderColor:'#F6F1E4',
+           borderWidth:1,pointRadius:jdRadii,pointHoverRadius:jdHoverRadii,order:0}
         ]
       },
       options:{responsive:true,maintainAspectRatio:false,
