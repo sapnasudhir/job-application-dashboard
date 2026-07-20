@@ -3,7 +3,7 @@
 {
   "name": "Job Application Dashboard",
   "schemaVersion": 1,
-  "description": "Job application dashboard. Upload a Notion CSV export. Filters to Jun 2025+. Charts: monthly applications (Sep 2025+), status donut with counts, quarterly tag trends (top 3 + Other, Sep 2025+), top 5 companies by record count (URL stripped), role theme trends by quarter (5 functional themes, Sep 2025+).",
+  "description": "Job application dashboard. Upload a Notion CSV export. Filters to Jun 2025+. Charts: monthly applications line chart (Sep 2025+), aging distribution with fitted normal curve and per-JD hover labels (Jan 2026+ JDs, capped at 120 days aging), recent applications list (last 15 days), recent interviews list (last 6 months), role theme trends by quarter (5 functional themes, Oct 2025+). Visual theme: a drafting-table/blueprint motif — vellum sheet tiles pinned on a cyanotype-blue ground, numbered like a drawing set, with a redline accent used for interview/annotation signal.",
   "mcpTools": [
     "mcp__35b0ec1d-2d5d-47d9-b0ad-59f36baa57cb__notion-search",
     "mcp__35b0ec1d-2d5d-47d9-b0ad-59f36baa57cb__notion-fetch",
@@ -25,75 +25,147 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Job Application Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
 <style>
-:root{color-scheme:light;}
+:root{
+  color-scheme:light;
+  --blueprint:#0E2F52;
+  --blueprint-deep:#081B33;
+  --vellum:#F6F1E4;
+  --vellum-dim:#ECE4D0;
+  --ink:#1C2B3A;
+  --linework:#C7D9EC;
+  --redline:#C1440E;
+  --graphite:#5B6B7C;
+  --patina-bright:#5FCDB0;
+  --brass-bright:#E7B65C;
+  --font-display:'Big Shoulders Display',sans-serif;
+  --font-head:'Space Grotesk',sans-serif;
+  --font-body:'IBM Plex Sans',sans-serif;
+  --font-mono:'IBM Plex Mono',monospace;
+}
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f4f5f9;color:#1a1a2e;min-height:100vh;}
+body{
+  font-family:var(--font-body);
+  background-color:var(--blueprint);
+  background-image:
+    repeating-linear-gradient(0deg,rgba(199,217,236,.05) 0 1px,transparent 1px 32px),
+    repeating-linear-gradient(90deg,rgba(199,217,236,.05) 0 1px,transparent 1px 32px);
+  color:var(--linework);
+  min-height:100vh;
+}
+:focus-visible{outline:2px solid var(--redline);outline-offset:2px;}
+.icon{display:inline-block;vertical-align:-3px;}
 
 /* ── Upload ── */
 #upload-screen{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:2rem;}
-.upload-card{background:#fff;border-radius:18px;padding:2.5rem 2rem;max-width:460px;width:100%;box-shadow:0 6px 30px rgba(0,0,0,.09);text-align:center;}
-.upload-card h1{font-size:1.4rem;font-weight:700;margin-bottom:.4rem;}
-.tagline{color:#777;font-size:.875rem;margin-bottom:1.75rem;line-height:1.5;}
-#drop-zone{border:2px dashed #c8cdd8;border-radius:12px;padding:2.25rem 1.5rem;cursor:pointer;transition:border-color .2s,background .2s;background:#fafbfd;}
-#drop-zone:hover,#drop-zone.drag-over{border-color:#667eea;background:#f0f2ff;}
-.dz-icon{font-size:2.2rem;margin-bottom:.65rem;}
-.dz-main{font-weight:600;color:#333;font-size:.95rem;margin-bottom:.3rem;}
-.dz-sub{font-size:.78rem;color:#999;}
+.upload-card{background:var(--vellum);border-top:3px solid var(--redline);border-radius:4px;padding:2.5rem 2rem;max-width:460px;width:100%;box-shadow:0 10px 34px rgba(8,27,51,.45);text-align:center;color:var(--ink);}
+.upload-card h1{font-family:var(--font-head);font-size:1.15rem;font-weight:700;letter-spacing:.02em;margin-bottom:.4rem;display:flex;align-items:center;justify-content:center;gap:.45rem;}
+.tagline{color:var(--graphite);font-size:.875rem;margin-bottom:1.75rem;line-height:1.5;}
+#drop-zone{border:2px dashed #C8B99A;border-radius:4px;padding:2.25rem 1.5rem;cursor:pointer;transition:border-color .2s,background .2s;background:var(--vellum-dim);}
+#drop-zone:hover,#drop-zone.drag-over{border-color:var(--redline);background:#F1E7CE;}
+.dz-icon{color:var(--graphite);margin-bottom:.65rem;}
+.dz-main{font-weight:600;color:var(--ink);font-size:.95rem;margin-bottom:.3rem;}
+.dz-sub{font-size:.78rem;color:var(--graphite);font-family:var(--font-mono);}
 #file-input{display:none;}
-.how-to{margin-top:1.5rem;background:#f8f9ff;border:1px solid #e4e8f8;border-radius:10px;padding:1rem 1.25rem;text-align:left;font-size:.8rem;color:#555;}
-.how-to strong{color:#333;display:block;margin-bottom:.5rem;}
+.how-to{margin-top:1.5rem;background:#EFE9D8;border:1px solid #DCCFAE;border-radius:4px;padding:1rem 1.25rem;text-align:left;font-size:.8rem;color:var(--ink);}
+.how-to strong{color:var(--ink);display:block;margin-bottom:.5rem;font-family:var(--font-head);text-transform:uppercase;font-size:.7rem;letter-spacing:.06em;}
 .how-to ol{padding-left:1.15rem;}
 .how-to li{margin-bottom:.3rem;line-height:1.45;}
-.how-to code{background:#eee;padding:1px 5px;border-radius:4px;font-size:.75rem;}
+.how-to code{background:#DCD2B8;padding:1px 5px;border-radius:2px;font-family:var(--font-mono);font-size:.75rem;}
 
 /* ── Dashboard ── */
-#dashboard{display:none;padding:1.25rem 1.5rem 2rem;}
-.dash-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.25rem;gap:1rem;}
-.dash-title{font-size:1.2rem;font-weight:700;line-height:1;}
-.dash-meta{font-size:.75rem;color:#999;margin-top:.35rem;}
-.btn-upload{background:#667eea;color:#fff;border:none;border-radius:8px;padding:.45rem 1rem;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .2s;}
-.btn-upload:hover{background:#5a6fd8;}
+#dashboard{display:none;padding:1.5rem 1.75rem 2.5rem;max-width:1180px;margin:0 auto;}
+.dash-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.5rem;gap:1rem;padding-bottom:1.1rem;border-bottom:1px solid rgba(199,217,236,.2);flex-wrap:wrap;}
+.eyebrow{font-family:var(--font-mono);font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--redline);margin-bottom:.3rem;}
+.dash-title{font-family:var(--font-display);font-size:2rem;font-weight:800;letter-spacing:.01em;text-transform:uppercase;line-height:1;color:var(--vellum);display:flex;align-items:center;gap:.55rem;}
+.dash-meta{font-family:var(--font-mono);font-size:.68rem;letter-spacing:.03em;text-transform:uppercase;color:var(--linework);opacity:.75;margin-top:.55rem;}
+.gh-status{font-family:var(--font-mono);font-size:.68rem;letter-spacing:.02em;margin-top:.35rem;min-height:1em;}
+.gh-status.pending{color:rgba(199,217,236,.65);}
+.gh-status.ok{color:var(--patina-bright);}
+.gh-status.warn{color:var(--brass-bright);}
+.gh-status.err{color:#FF8A5C;}
+.header-actions{display:flex;gap:.5rem;flex-wrap:wrap;}
+.btn-upload{background:var(--redline);color:var(--vellum);border:1px solid var(--redline);border-radius:2px;padding:.5rem 1.05rem;font-family:var(--font-mono);font-size:.72rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;white-space:nowrap;transition:transform .15s,background .15s;display:inline-flex;align-items:center;gap:.4rem;}
+.btn-upload:hover{background:#A5390C;transform:translateY(-1px);}
+.btn-secondary{background:transparent;color:var(--linework);border:1px solid rgba(199,217,236,.4);}
+.btn-secondary:hover{background:rgba(199,217,236,.08);}
+.upload-card .btn-secondary{color:var(--ink);border-color:var(--graphite);}
 
 /* Stats */
-.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1rem;}
-.stat{background:#fff;border-radius:12px;padding:1.1rem 1.4rem;box-shadow:0 2px 8px rgba(0,0,0,.05);}
-.stat .lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#999;margin-bottom:.35rem;}
-.stat .val{font-size:1.9rem;font-weight:800;color:#1a1a2e;line-height:1;}
-.stat .sub{font-size:.72rem;color:#bbb;margin-top:.3rem;}
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.25rem;}
+.stat{background:var(--vellum);border-radius:4px;padding:1.05rem 1.3rem;box-shadow:0 4px 16px rgba(8,27,51,.3);color:var(--ink);}
+.stat .lbl{font-family:var(--font-mono);font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:var(--graphite);margin-bottom:.4rem;}
+.stat .val{font-family:var(--font-display);font-size:2.2rem;font-weight:800;color:var(--ink);line-height:1;}
+.stat .sub{font-family:var(--font-mono);font-size:.68rem;color:var(--graphite);margin-top:.35rem;}
 
 /* Charts */
-.charts-row{display:grid;gap:1rem;margin-bottom:1rem;}
+.charts-row{display:grid;gap:1.1rem;margin-bottom:1.1rem;}
 .row-1{grid-template-columns:1fr;}
 .row-2{grid-template-columns:1fr 1fr;}
-.card{background:#fff;border-radius:12px;padding:1.15rem 1.25rem;box-shadow:0 2px 8px rgba(0,0,0,.05);}
-.card h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:#999;font-weight:700;margin-bottom:.85rem;}
+.card{position:relative;background:var(--vellum);border-radius:4px;padding:1.2rem 1.3rem;box-shadow:0 4px 16px rgba(8,27,51,.3);color:var(--ink);
+  overflow-x:hidden;opacity:0;animation:none;}
+.card::before{content:'';position:absolute;top:-6px;left:20px;width:36px;height:12px;background:rgba(199,217,236,.5);transform:rotate(-3deg);border-radius:1px;}
+.card h3{font-family:var(--font-head);font-size:.82rem;text-transform:uppercase;letter-spacing:.03em;color:var(--ink);font-weight:700;margin-bottom:.9rem;}
+.card h3 .constraint{font-family:var(--font-mono);font-weight:400;color:var(--graphite);font-size:.62rem;text-transform:none;letter-spacing:0;}
 .chart-wrap{position:relative;height:210px;}
 
-#err-banner{display:none;background:#fff4f4;border:1px solid #f5c2c2;border-radius:10px;padding:.9rem 1.1rem;color:#c0392b;font-size:.82rem;margin-bottom:1rem;}
-#col-debug{display:none;background:#fffbea;border:1px solid #f5e6a2;border-radius:8px;padding:.7rem 1rem;font-size:.72rem;color:#7a6000;margin-bottom:1rem;line-height:1.6;}
+/* Lists */
+.list-wrap{max-height:210px;overflow-y:auto;overflow-x:hidden;}
+.list-row{display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.45rem 0;border-bottom:1px solid #E4DAC0;transition:background .15s;}
+.list-row:hover{background:rgba(193,68,14,.05);}
+.list-row:last-child{border-bottom:none;}
+.list-main{min-width:0;flex:1;}
+.list-title{font-family:var(--font-body);font-size:.82rem;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.list-sub{font-size:.72rem;color:var(--graphite);margin-top:.1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.list-meta{display:flex;align-items:center;gap:.35rem;flex-shrink:0;font-family:var(--font-mono);font-size:.65rem;color:var(--graphite);white-space:nowrap;}
+.list-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.list-empty{color:var(--graphite);font-family:var(--font-mono);font-size:.78rem;padding:.75rem 0;text-align:center;}
 
-/* ── GitHub sync ── */
-.gh-status{font-size:.72rem;margin-top:.35rem;min-height:1em;}
-.gh-status.pending{color:#999;}
-.gh-status.ok{color:#2e9e5b;}
-.gh-status.warn{color:#b8860b;}
-.gh-status.err{color:#c0392b;}
-.btn-secondary{background:#eee;color:#555;}
-.btn-secondary:hover{background:#e2e2e2;}
-.pat-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:1.5rem;z-index:1000;}
+#err-banner{display:none;background:#3A1A12;border:1px solid var(--redline);border-radius:4px;padding:.9rem 1.1rem;color:#FFB89D;font-size:.82rem;margin-bottom:1rem;}
+#col-debug{display:none;background:rgba(199,217,236,.06);border:1px solid rgba(199,217,236,.25);border-radius:4px;padding:.7rem 1rem;font-family:var(--font-mono);font-size:.7rem;color:var(--linework);margin-bottom:1rem;line-height:1.6;}
+#col-debug strong{color:var(--redline);}
+
+.pat-modal-overlay{position:fixed;inset:0;background:rgba(8,27,51,.6);display:none;align-items:center;justify-content:center;padding:1.5rem;z-index:1000;}
 .pat-card{max-width:420px;}
-#pat-input{width:100%;padding:.6rem .75rem;border:1px solid #c8cdd8;border-radius:8px;font-size:.85rem;margin-bottom:1.25rem;font-family:inherit;}
+#pat-input{width:100%;padding:.6rem .75rem;border:1px solid #C8B99A;border-radius:2px;font-size:.85rem;margin-bottom:1.25rem;font-family:var(--font-mono);background:var(--vellum-dim);color:var(--ink);}
 .pat-actions{display:flex;gap:.6rem;margin-top:1.25rem;}
-.pat-actions .btn-upload{flex:1;}
+.pat-actions .btn-upload{flex:1;justify-content:center;}
 
 /* ── Passcode gates ── */
 #passcode-gate{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:2rem;}
 .passcode-card{max-width:380px;}
-#pg-input,#pg-confirm,#upm-input,#upm-confirm{width:100%;padding:.65rem .8rem;border:1px solid #c8cdd8;border-radius:8px;font-size:.95rem;margin-bottom:.75rem;font-family:inherit;text-align:center;letter-spacing:.15em;}
-.passcode-err{color:#c0392b;font-size:.78rem;min-height:1.1em;margin-bottom:.5rem;}
-.passcode-reset{display:none;margin-top:1rem;font-size:.72rem;color:#999;cursor:pointer;text-decoration:underline;background:none;border:none;}
+#pg-input,#pg-confirm,#upm-input,#upm-confirm{width:100%;padding:.65rem .8rem;border:1px solid #C8B99A;border-radius:2px;font-size:.95rem;margin-bottom:.75rem;font-family:var(--font-mono);background:var(--vellum-dim);color:var(--ink);text-align:center;letter-spacing:.15em;}
+.passcode-err{color:var(--redline);font-size:.78rem;min-height:1.1em;margin-bottom:.5rem;}
+.passcode-reset{display:none;margin-top:1rem;font-size:.72rem;color:var(--graphite);cursor:pointer;text-decoration:underline;background:none;border:none;font-family:var(--font-body);}
+
+/* ── Motion (respects reduced-motion) ── */
+@media (prefers-reduced-motion:no-preference){
+  .card{animation:sheet-in .5s ease-out forwards;}
+  .stats-row .stat{opacity:0;animation:sheet-in .5s ease-out forwards;}
+  .charts-row:nth-of-type(1) .card{animation-delay:.05s;}
+  .stats-row .stat:nth-child(1){animation-delay:0s;}
+  .stats-row .stat:nth-child(2){animation-delay:.06s;}
+  .stats-row .stat:nth-child(3){animation-delay:.12s;}
+  @keyframes sheet-in{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+}
+@media (prefers-reduced-motion:reduce){
+  .card{opacity:1;}
+}
+
+/* ── Responsive ── */
+@media (max-width:760px){
+  #dashboard{padding:1.1rem 1rem 2rem;}
+  .stats-row{grid-template-columns:1fr;}
+  .row-2{grid-template-columns:1fr;}
+  .dash-header{flex-direction:column;align-items:stretch;}
+  .header-actions{width:100%;}
+  .header-actions .btn-upload{flex:1;justify-content:center;}
+  .dash-title{font-size:1.5rem;}
+}
 </style>
 </head>
 <body>
@@ -101,12 +173,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <!-- ══════════ PASSCODE GATE (view) ══════════ -->
 <div id="passcode-gate">
   <div class="upload-card passcode-card">
-    <h1 id="pg-title">🔒 Enter Passcode</h1>
+    <h1 id="pg-title">
+      <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      Enter Passcode
+    </h1>
     <p class="tagline" id="pg-desc">This dashboard is passcode-protected.</p>
     <input type="password" id="pg-input" placeholder="Passcode" autocomplete="off">
     <input type="password" id="pg-confirm" placeholder="Confirm passcode" autocomplete="off" style="display:none;">
     <div class="passcode-err" id="pg-err"></div>
-    <button class="btn-upload" id="pg-submit" style="width:100%;">Unlock</button>
+    <button class="btn-upload" id="pg-submit" style="width:100%;justify-content:center;">Unlock</button>
     <button class="passcode-reset" id="pg-reset">Reset passcode for this device</button>
   </div>
 </div>
@@ -114,12 +189,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <!-- ══════════ UPLOAD ══════════ -->
 <div id="upload-screen">
   <div class="upload-card">
-    <h1>📊 Job Application Dashboard</h1>
+    <h1>
+      <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5 13 13l-4.5 2.5L11 11l4.5-2.5Z"/></svg>
+      Job Application Dashboard
+    </h1>
     <p class="tagline">Upload a CSV export from your Notion database to generate your dashboard.</p>
     <div id="drop-zone" onclick="openFilePicker()">
-      <div class="dz-icon">📂</div>
+      <div class="dz-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"/><path d="M12 11v5M9.5 13.5 12 11l2.5 2.5"/></svg>
+      </div>
       <div class="dz-main">Drop CSV here or click to browse</div>
-      <div class="dz-sub">Accepts .csv files exported from Notion</div>
+      <div class="dz-sub">ACCEPTS .CSV FROM NOTION</div>
     </div>
     <input type="file" id="file-input" accept=".csv,.txt">
     <div class="how-to">
@@ -141,13 +221,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
   <div class="dash-header">
     <div>
-      <div class="dash-title">📊 Job Application Dashboard</div>
+      <div class="eyebrow">Enterprise Architecture · Product · Strategy Leadership Search</div>
+      <div class="dash-title">
+        <svg class="icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5 13 13l-4.5 2.5L11 11l4.5-2.5Z"/></svg>
+        Application Dossier
+      </div>
       <div class="dash-meta" id="dash-meta"></div>
       <div class="gh-status" id="gh-status"></div>
     </div>
-    <div style="display:flex;gap:.5rem;">
-      <button class="btn-upload btn-secondary" onclick="promptForPat()">🔑 Token</button>
-      <button class="btn-upload" onclick="requestUploadScreen()">↑ Upload New CSV</button>
+    <div class="header-actions">
+      <button class="btn-upload btn-secondary" onclick="promptForPat()">
+        <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="14" r="3.5"/><path d="M9.8 11.2 18 3M15 6l2 2M18 3l3 3"/></svg>
+        Token
+      </button>
+      <button class="btn-upload" onclick="requestUploadScreen()">
+        <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+        Upload New CSV
+      </button>
     </div>
   </div>
 
@@ -171,25 +261,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
   <div class="charts-row row-1">
     <div class="card">
-      <h3>Applications Created by Month <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(Sep 2025 onwards)</span></h3>
+      <h3>Applications by Month <span class="constraint">(Sep 2025 onwards)</span></h3>
       <div class="chart-wrap"><canvas id="c-monthly"></canvas></div>
-    </div>
-  </div>
-
-  <div class="charts-row row-2">
-    <div class="card">
-      <h3>Application Status</h3>
-      <div class="chart-wrap"><canvas id="c-status"></canvas></div>
-    </div>
-    <div class="card">
-      <h3>Tag Distribution by Quarter <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(Oct 2025 onwards)</span></h3>
-      <div class="chart-wrap"><canvas id="c-tags"></canvas></div>
     </div>
   </div>
 
   <div class="charts-row row-1">
     <div class="card">
-      <h3>Role Theme Trends by Quarter <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(Oct 2025 onwards)</span></h3>
+      <h3>Aging Distribution <span class="constraint">(JDs created Jan 2026 onwards, ≤120 days aging)</span></h3>
+      <div class="chart-wrap"><canvas id="c-aging"></canvas></div>
+    </div>
+  </div>
+
+  <div class="charts-row row-2">
+    <div class="card">
+      <h3>Recent Applications <span class="constraint">- Last 15 days</span></h3>
+      <div class="list-wrap" id="list-recent-jds"></div>
+    </div>
+    <div class="card">
+      <h3>Recent Interviews <span class="constraint">- Last 6 Months</span></h3>
+      <div class="list-wrap" id="list-interviewed"></div>
+    </div>
+  </div>
+
+  <div class="charts-row row-1">
+    <div class="card">
+      <h3>Role Theme Trends by Quarter <span class="constraint">(Oct 2025 onwards)</span></h3>
       <div class="chart-wrap"><canvas id="c-themes"></canvas></div>
     </div>
   </div>
@@ -198,7 +295,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <!-- ══════════ UPLOAD PASSCODE MODAL ══════════ -->
 <div id="upload-pass-modal" class="pat-modal-overlay">
   <div class="upload-card pat-card">
-    <h1 id="upm-title">🔒 Upload Passcode</h1>
+    <h1 id="upm-title">
+      <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      Upload Passcode
+    </h1>
     <p class="tagline" id="upm-desc">Enter the passcode to upload a new CSV.</p>
     <input type="password" id="upm-input" placeholder="Passcode" autocomplete="off">
     <input type="password" id="upm-confirm" placeholder="Confirm passcode" autocomplete="off" style="display:none;">
@@ -214,7 +314,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <!-- ══════════ GITHUB TOKEN MODAL ══════════ -->
 <div id="pat-modal" class="pat-modal-overlay">
   <div class="upload-card pat-card">
-    <h1>🔑 Connect GitHub</h1>
+    <h1>
+      <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="14" r="3.5"/><path d="M9.8 11.2 18 3M15 6l2 2M18 3l3 3"/></svg>
+      Connect GitHub
+    </h1>
     <p class="tagline">To save an uploaded CSV back to the repo, paste a fine-grained GitHub personal access token scoped to just <strong>job-application-dashboard</strong> with <strong>Contents: Read and write</strong> permission.</p>
     <input type="password" id="pat-input" placeholder="github_pat_...">
     <div class="how-to">
@@ -235,6 +338,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 <script>
 'use strict';
+
+if(window.Chart){
+  Chart.defaults.font.family="'IBM Plex Mono',monospace";
+  Chart.defaults.font.size=11;
+  Chart.defaults.color='#5B6B7C';
+}
 
 // ═══ Chart registry ═══
 const CH={};
@@ -343,9 +452,10 @@ function initPasscodeGate(){
     const title=document.getElementById('pg-title'),desc=document.getElementById('pg-desc');
     const input=document.getElementById('pg-input'),confirmEl=document.getElementById('pg-confirm');
     const err=document.getElementById('pg-err'),submit=document.getElementById('pg-submit'),resetBtn=document.getElementById('pg-reset');
+    const lockIcon='<svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> ';
     function render(){
       const setup=!localStorage.getItem(VIEW_HASH_KEY);
-      title.textContent=setup?'🔒 Set a Passcode':'🔒 Enter Passcode';
+      title.innerHTML=lockIcon+(setup?'Set a Passcode':'Enter Passcode');
       desc.textContent=setup?'Create a passcode to protect this dashboard on this device.':'This dashboard is passcode-protected.';
       confirmEl.style.display=setup?'block':'none';
       resetBtn.style.display=setup?'none':'block';
@@ -388,9 +498,10 @@ function requireUploadUnlock(){
     const input=document.getElementById('upm-input'),confirmEl=document.getElementById('upm-confirm');
     const err=document.getElementById('upm-err'),saveBtn=document.getElementById('upm-save-btn');
     const cancelBtn=document.getElementById('upm-cancel-btn'),resetBtn=document.getElementById('upm-reset');
+    const lockIcon='<svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> ';
     function render(){
       const setup=!localStorage.getItem(UPLOAD_HASH_KEY);
-      title.textContent=setup?'🔒 Set an Upload Passcode':'🔒 Upload Passcode';
+      title.innerHTML=lockIcon+(setup?'Set an Upload Passcode':'Upload Passcode');
       desc.textContent=setup?'Create a passcode required to upload a new CSV on this device.':'Enter the passcode to upload a new CSV.';
       confirmEl.style.display=setup?'block':'none';
       resetBtn.style.display=setup?'none':'block';
@@ -479,7 +590,8 @@ function detectCols(h){
     created: find('created time','created'),
     status:  find('application status','status'),
     tags:    find('tags','tag'),
-    company: find('company','companies','employer','organization')
+    company: find('company','companies','employer','organization'),
+    aging:   find('aging (days)','aging')
   };
 }
 
@@ -489,12 +601,13 @@ function pd(s){if(!s)return null;const d=new Date(s);return isNaN(d.getTime())?n
 const JUN2025=new Date(2025,5,1);   // Jun 1 2025
 const SEP2025=new Date(2025,8,1);   // Sep 1 2025
 const OCT2025=new Date(2025,9,1);   // Oct 1 2025
+const JAN2026=new Date(2026,0,1);   // Jan 1 2026
 
 function monthInfo(date){
   const y=date.getFullYear(),m=date.getMonth();
   return{
     key:`${y}-${String(m).padStart(2,'0')}`,
-    label:date.toLocaleDateString('en-US',{month:'short',year:'numeric'})
+    label:date.toLocaleDateString('en-US',{month:'short',year:'2-digit'})
   };
 }
 
@@ -537,19 +650,28 @@ function roleTheme(pos){
   return'Operations & Management';
 }
 
-// ═══ Colors ═══
+// ═══ Colors — an "architectural materials" palette, not stock chart colors ═══
+// Blueprint blue (drawing ink), patina teal (aged copper), brass, graphite (pencil lead),
+// rust, and redline (the drafter's red pen — reserved for interview/attention signal).
 const STATUS_COL={
-  'Applied':'#667eea','In progress - Interviewing':'#43e97b',
-  'Done - Interviewed':'#4facfe','Done - Not Selected':'#f5576c',
-  'Done - Rejected':'#fa709a','Withdrawn':'#fee140','No Response':'#aaa'
+  'Applied':'#2E5C8A','In progress - Interviewing':'#C1440E',
+  'Done - Interviewed':'#2F6F62','Done - Not Selected':'#8A94A3',
+  'Done - Rejected':'#8A94A3','Withdrawn':'#C68A2E','No Response':'#B7C0CC'
 };
+// Notion's status option casing has drifted before (e.g. "In progress" vs "In Progress"),
+// so status comparisons are case-insensitive rather than exact-string matches.
+function statusEq(actual,expected){return(actual||'').trim().toLowerCase()===expected.toLowerCase();}
+function statusColor(status){
+  const key=Object.keys(STATUS_COL).find(k=>statusEq(status,k));
+  return key?STATUS_COL[key]:'#ccc';
+}
 const THEME_COL={
-  'Architecture & Solutions':'#667eea','Data, AI & Analytics':'#4facfe',
-  'Product & Strategy':'#43e97b','Engineering & Technology':'#f093fb',
-  'Operations & Management':'#fa709a'
+  'Architecture & Solutions':'#2E5C8A','Data, AI & Analytics':'#2F6F62',
+  'Product & Strategy':'#C68A2E','Engineering & Technology':'#5B6B7C',
+  'Operations & Management':'#8C4B3A'
 };
 const THEMES=['Architecture & Solutions','Data, AI & Analytics','Product & Strategy','Engineering & Technology','Operations & Management'];
-const TAG_PAL=['#667eea','#43e97b','#f093fb','#fa709a']; // top3 + Other
+const GRID_COL='rgba(11,41,71,.08)';
 
 // ═══ Process data ═══
 function processData(rows,header){
@@ -566,12 +688,14 @@ function processData(rows,header){
     const g=i=>(i>=0&&i<row.length)?(row[i]||'').trim():'';
     const created=pd(g(cols.created));
     if(!created||created<JUN2025)continue;  // exclude pre-Jun 2025
+    const agingRaw=g(cols.aging).match(/\d+/);
     records.push({
       created,
       status:  g(cols.status),
       tags:    g(cols.tags)?g(cols.tags).split(',').map(t=>t.trim()).filter(Boolean):[],
       companies: cleanCo(g(cols.company)),
-      position:  g(cols.position)
+      position:  g(cols.position),
+      aging:   agingRaw?parseInt(agingRaw[0],10):null
     });
   }
   return records;
@@ -582,14 +706,14 @@ function renderDashboard(records){
   // ── Stats ──
   document.getElementById('s-total').textContent=records.length;
   document.getElementById('s-interviewed').textContent=records.filter(r=>
-    r.status==='Done - Interviewed'||r.status==='In progress - Interviewing').length;
+    statusEq(r.status,'Done - Interviewed')||statusEq(r.status,'In progress - Interviewing')).length;
   const now=new Date();
   const cutoff=new Date(now);cutoff.setDate(cutoff.getDate()-10);cutoff.setHours(0,0,0,0);
   document.getElementById('s-recent').textContent=records.filter(r=>r.created>=cutoff).length;
   const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
   document.getElementById('s-recent-range').textContent=`${fmt(cutoff)} – ${fmt(now)}`;
 
-  // ── Monthly bar (Sep 2025+) ──
+  // ── Applications by month, line chart (Sep 2025+) ──
   const mMap={};
   for(const r of records){
     if(r.created<SEP2025)continue;
@@ -601,83 +725,14 @@ function renderDashboard(records){
 
   kill('monthly');
   CH.monthly=new Chart(document.getElementById('c-monthly'),{
-    type:'bar',
+    type:'line',
     data:{labels:mKeys.map(k=>mMap[k].label),datasets:[{
-      data:mKeys.map(k=>mMap[k].n),backgroundColor:'#667eea',borderRadius:4,label:'Applications'
+      data:mKeys.map(k=>mMap[k].n),borderColor:'#2E5C8A',backgroundColor:'#2E5C8A',
+      pointRadius:3,pointHoverRadius:5,tension:.3,label:'Applications'
     }]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false}},
-      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
-    }
-  });
-
-  // ── Status donut ──
-  const stMap={};
-  for(const r of records){const s=r.status||'Unknown';stMap[s]=(stMap[s]||0)+1;}
-  const stKeys=Object.keys(stMap).sort((a,b)=>stMap[b]-stMap[a]);
-
-  kill('status');
-  CH.status=new Chart(document.getElementById('c-status'),{
-    type:'doughnut',
-    data:{labels:stKeys,datasets:[{
-      data:stKeys.map(k=>stMap[k]),
-      backgroundColor:stKeys.map(k=>STATUS_COL[k]||'#ccc'),
-      borderWidth:2,borderColor:'#fff'
-    }]},
-    options:{responsive:true,maintainAspectRatio:false,cutout:'58%',
-      plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:8,
-        generateLabels(chart){
-          const ds=chart.data.datasets[0];
-          return chart.data.labels.map((lbl,i)=>({
-            text:`${lbl}  (${ds.data[i]})`,fillStyle:ds.backgroundColor[i],
-            strokeStyle:'#fff',lineWidth:2,hidden:false,index:i
-          }));
-        }
-      }}}
-    }
-  });
-
-  // ── Tags: stacked bar by quarter, top 3 + Other (Sep 2025+) ──
-  const tagRecs=records.filter(r=>r.created>=OCT2025);
-  // Count all tags to find top 3
-  const tagTotals={};
-  for(const r of tagRecs)for(const t of r.tags)tagTotals[t]=(tagTotals[t]||0)+1;
-  const top3=Object.entries(tagTotals).sort((a,b)=>b[1]-a[1]).slice(0,3).map(e=>e[0]);
-  const tagSeries=[...top3,'Other'];
-  // Build per-quarter counts
-  const tagQMap={};
-  for(const r of tagRecs){
-    const{key,label}=qtrInfo(r.created);
-    if(!tagQMap[key])tagQMap[key]={label,counts:{}};
-    if(r.tags.length===0){
-      // no tags — don't add to Other to avoid inflating
-    } else {
-      for(const t of r.tags){
-        const bucket=top3.includes(t)?t:'Other';
-        tagQMap[key].counts[bucket]=(tagQMap[key].counts[bucket]||0)+1;
-      }
-    }
-  }
-  const tagQKeys=Object.keys(tagQMap).sort();
-
-  kill('tags');
-  CH.tags=new Chart(document.getElementById('c-tags'),{
-    type:'bar',
-    data:{
-      labels:tagQKeys.map(k=>tagQMap[k].label),
-      datasets:tagSeries.map((tag,i)=>({
-        label:tag,
-        data:tagQKeys.map(k=>tagQMap[k].counts[tag]||0),
-        backgroundColor:TAG_PAL[i]||'#bbb',
-        stack:'tags',borderRadius:2
-      }))
-    },
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:6,boxWidth:11}}},
-      scales:{
-        y:{stacked:true,beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},
-        x:{stacked:true,grid:{display:false}}
-      }
+      scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:GRID_COL}},x:{grid:{display:false}}}
     }
   });
 
@@ -707,11 +762,114 @@ function renderDashboard(records){
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:6,boxWidth:11}}},
       scales:{
-        y:{stacked:true,beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},
+        y:{stacked:true,beginAtZero:true,ticks:{stepSize:1},grid:{color:GRID_COL}},
         x:{stacked:true,grid:{display:false}}
       }
     }
   });
+
+  // ── Aging distribution: fitted normal curve + one point per JD (Jan 2026+) ──
+  const agingRecs=records.filter(r=>r.created>=JAN2026&&typeof r.aging==='number'&&r.aging<=120);
+  kill('aging');
+  if(agingRecs.length>=2){
+    const agingVals=agingRecs.map(r=>r.aging);
+    const mean=agingVals.reduce((a,b)=>a+b,0)/agingVals.length;
+    const variance=agingVals.reduce((a,b)=>a+(b-mean)**2,0)/agingVals.length;
+    const sigma=Math.sqrt(variance)||1;
+    const pdf=x=>Math.exp(-((x-mean)**2)/(2*sigma*sigma))/(sigma*Math.sqrt(2*Math.PI));
+
+    const lo=Math.max(0,Math.min(...agingVals)-sigma),hi=Math.max(...agingVals)+sigma;
+    const STEPS=60;
+    const curvePoints=[];
+    for(let i=0;i<=STEPS;i++){
+      const x=lo+(hi-lo)*i/STEPS;
+      curvePoints.push({x,y:pdf(x)});
+    }
+    const peak=pdf(mean);
+
+    const jdPoints=agingRecs.map(r=>({x:r.aging,y:pdf(r.aging)}));
+    const jdMeta=agingRecs.map(r=>({position:r.position||'(untitled)',company:r.companies.join(', ')||'—'}));
+
+    CH.aging=new Chart(document.getElementById('c-aging'),{
+      data:{
+        datasets:[
+          {type:'line',label:'Normal fit',data:curvePoints,borderColor:'#5B6B7C',backgroundColor:'transparent',
+           pointRadius:0,tension:.35,fill:false,borderWidth:2,order:2},
+          {type:'line',label:'Mean',data:[{x:mean,y:0},{x:mean,y:peak}],borderColor:'#8A94A3',backgroundColor:'transparent',
+           borderDash:[5,4],borderWidth:1.5,pointRadius:0,fill:false,order:1},
+          {type:'scatter',label:'Applications',data:jdPoints,backgroundColor:'#C1440E',borderColor:'#F6F1E4',
+           borderWidth:1,pointRadius:5,pointHoverRadius:7,order:0}
+        ]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        interaction:{mode:'nearest',intersect:true},
+        plugins:{
+          legend:{display:false},
+          tooltip:{
+            backgroundColor:'#081B33',titleColor:'#F6F1E4',bodyColor:'#C7D9EC',
+            borderColor:'#C1440E',borderWidth:1,cornerRadius:0,displayColors:false,
+            titleFont:{family:"'IBM Plex Mono',monospace",size:11},
+            bodyFont:{family:"'IBM Plex Mono',monospace",size:11},
+            padding:9,
+            callbacks:{
+              title:()=>'',
+              label(ctx){
+                if(ctx.dataset.label!=='Applications')return null;
+                const m=jdMeta[ctx.dataIndex];
+                return [`${m.position}`,`${m.company}`,`${ctx.parsed.x} days aging`];
+              }
+            }
+          }
+        },
+        scales:{
+          x:{type:'linear',title:{display:true,text:'Aging (Days)',font:{size:10}},grid:{color:GRID_COL}},
+          y:{display:false}
+        }
+      }
+    });
+  }
+
+  // ── Companies interviewed, last 6 months (In progress first, then Done - Interviewed) ──
+  const sixMoAgo=new Date(now);sixMoAgo.setMonth(sixMoAgo.getMonth()-6);
+  const inProg=records.filter(r=>statusEq(r.status,'In progress - Interviewing')&&r.created>=sixMoAgo)
+    .sort((a,b)=>b.created-a.created);
+  const doneInt=records.filter(r=>statusEq(r.status,'Done - Interviewed')&&r.created>=sixMoAgo)
+    .sort((a,b)=>b.created-a.created);
+  renderList('list-interviewed',[...inProg,...doneInt],r=>({
+    title:r.position||'(untitled)',
+    sub:r.companies.join(', ')||'—',
+    meta:fmt(r.created),
+    dotColor:statusColor(r.status)
+  }),'No interviews in the last 6 months.');
+
+  // ── New JDs, last 15 days ──
+  const fifteenAgo=new Date(now);fifteenAgo.setDate(fifteenAgo.getDate()-15);
+  const recentJds=records.filter(r=>r.created>=fifteenAgo).sort((a,b)=>b.created-a.created);
+  renderList('list-recent-jds',recentJds,r=>({
+    title:r.position||'(untitled)',
+    sub:r.companies.join(', ')||'—',
+    meta:fmt(r.created)
+  }),'No new JDs in the last 15 days.');
+}
+
+// ═══ List tile renderer ═══
+function renderList(elId,items,mapFn,emptyMsg){
+  const el=document.getElementById(elId);
+  if(items.length===0){el.innerHTML=`<div class="list-empty">${emptyMsg}</div>`;return;}
+  el.innerHTML=items.map(item=>{
+    const{title,sub,meta,dotColor}=mapFn(item);
+    const dot=dotColor?`<span class="list-dot" style="background:${dotColor}"></span>`:'';
+    return`<div class="list-row">
+      <div class="list-main">
+        <div class="list-title">${escapeHtml(title)}</div>
+        <div class="list-sub">${escapeHtml(sub)}</div>
+      </div>
+      <div class="list-meta">${dot}${escapeHtml(meta)}</div>
+    </div>`;
+  }).join('');
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 // ═══ File handling ═══
