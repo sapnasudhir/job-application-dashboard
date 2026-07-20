@@ -187,11 +187,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     </div>
   </div>
 
-  <div class="charts-row row-2">
-    <div class="card">
-      <h3>Top 5 Companies</h3>
-      <div class="chart-wrap"><canvas id="c-companies"></canvas></div>
-    </div>
+  <div class="charts-row row-1">
     <div class="card">
       <h3>Role Theme Trends by Quarter <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(Oct 2025 onwards)</span></h3>
       <div class="chart-wrap"><canvas id="c-themes"></canvas></div>
@@ -682,27 +678,6 @@ function renderDashboard(records){
         y:{stacked:true,beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},
         x:{stacked:true,grid:{display:false}}
       }
-    }
-  });
-
-  // ── Top 5 Companies ──
-  const coMap={};
-  for(const r of records){
-    const seen=new Set();
-    for(const c of r.companies){if(c&&!seen.has(c)){coMap[c]=(coMap[c]||0)+1;seen.add(c);}}
-  }
-  const top5=Object.entries(coMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
-
-  kill('companies');
-  CH.companies=new Chart(document.getElementById('c-companies'),{
-    type:'bar',
-    data:{
-      labels:top5.map(c=>c[0]),
-      datasets:[{data:top5.map(c=>c[1]),backgroundColor:'#4facfe',borderRadius:4}]
-    },
-    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
-      plugins:{legend:{display:false}},
-      scales:{x:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},y:{grid:{display:false}}}
     }
   });
 
