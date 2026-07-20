@@ -3,7 +3,7 @@
 {
   "name": "Job Application Dashboard",
   "schemaVersion": 1,
-  "description": "Job application dashboard. Upload a Notion CSV export. Filters to Jun 2025+. Charts: monthly applications (Sep 2025+), status donut with counts, quarterly tag trends (top 3 + Other, Sep 2025+), top 5 companies by record count (URL stripped), role theme trends by quarter (5 functional themes, Sep 2025+).",
+  "description": "Job application dashboard. Upload a Notion CSV export. Filters to Jun 2025+. Charts: weekly applications line chart (Sep 2025+), role theme trends by quarter (5 functional themes, Oct 2025+), aging distribution with fitted normal curve and per-JD hover labels (Jan 2026+ JDs), companies interviewed in the last 6 months (list), new JDs in the last 15 days (list).",
   "mcpTools": [
     "mcp__35b0ec1d-2d5d-47d9-b0ad-59f36baa57cb__notion-search",
     "mcp__35b0ec1d-2d5d-47d9-b0ad-59f36baa57cb__notion-fetch",
@@ -70,6 +70,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .card{background:#fff;border-radius:12px;padding:1.15rem 1.25rem;box-shadow:0 2px 8px rgba(0,0,0,.05);}
 .card h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:#999;font-weight:700;margin-bottom:.85rem;}
 .chart-wrap{position:relative;height:210px;}
+
+/* Lists */
+.list-wrap{max-height:230px;overflow-y:auto;}
+.list-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.55rem 0;border-bottom:1px solid #f0f0f0;}
+.list-row:last-child{border-bottom:none;}
+.list-main{min-width:0;}
+.list-title{font-size:.82rem;font-weight:600;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.list-sub{font-size:.72rem;color:#999;margin-top:.1rem;}
+.list-meta{display:flex;align-items:center;gap:.4rem;flex-shrink:0;font-size:.7rem;color:#aaa;white-space:nowrap;}
+.list-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.list-empty{color:#aaa;font-size:.8rem;padding:.75rem 0;text-align:center;}
 
 #err-banner{display:none;background:#fff4f4;border:1px solid #f5c2c2;border-radius:10px;padding:.9rem 1.1rem;color:#c0392b;font-size:.82rem;margin-bottom:1rem;}
 #col-debug{display:none;background:#fffbea;border:1px solid #f5e6a2;border-radius:8px;padding:.7rem 1rem;font-size:.72rem;color:#7a6000;margin-bottom:1rem;line-height:1.6;}
@@ -171,26 +182,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
   <div class="charts-row row-1">
     <div class="card">
-      <h3>Applications Created by Month <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(Sep 2025 onwards)</span></h3>
-      <div class="chart-wrap"><canvas id="c-monthly"></canvas></div>
-    </div>
-  </div>
-
-  <div class="charts-row row-2">
-    <div class="card">
-      <h3>Application Status</h3>
-      <div class="chart-wrap"><canvas id="c-status"></canvas></div>
-    </div>
-    <div class="card">
-      <h3>Tag Distribution by Quarter <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(Oct 2025 onwards)</span></h3>
-      <div class="chart-wrap"><canvas id="c-tags"></canvas></div>
+      <h3>Applications by Week <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(Sep 2025 onwards)</span></h3>
+      <div class="chart-wrap"><canvas id="c-weekly"></canvas></div>
     </div>
   </div>
 
   <div class="charts-row row-1">
     <div class="card">
+      <h3>Aging Distribution <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(JDs created Jan 2026 onwards)</span></h3>
+      <div class="chart-wrap"><canvas id="c-aging"></canvas></div>
+    </div>
+  </div>
+
+  <div class="charts-row row-2">
+    <div class="card">
       <h3>Role Theme Trends by Quarter <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(Oct 2025 onwards)</span></h3>
       <div class="chart-wrap"><canvas id="c-themes"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Companies Interviewed <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(last 6 months)</span></h3>
+      <div class="list-wrap" id="list-interviewed"></div>
+    </div>
+  </div>
+
+  <div class="charts-row row-1">
+    <div class="card">
+      <h3>New JDs <span style="font-weight:400;color:#bbb;font-size:.65rem;text-transform:none;">(last 15 days)</span></h3>
+      <div class="list-wrap" id="list-recent-jds"></div>
     </div>
   </div>
 </div>
@@ -479,7 +497,8 @@ function detectCols(h){
     created: find('created time','created'),
     status:  find('application status','status'),
     tags:    find('tags','tag'),
-    company: find('company','companies','employer','organization')
+    company: find('company','companies','employer','organization'),
+    aging:   find('aging (days)','aging')
   };
 }
 
@@ -489,12 +508,16 @@ function pd(s){if(!s)return null;const d=new Date(s);return isNaN(d.getTime())?n
 const JUN2025=new Date(2025,5,1);   // Jun 1 2025
 const SEP2025=new Date(2025,8,1);   // Sep 1 2025
 const OCT2025=new Date(2025,9,1);   // Oct 1 2025
+const JAN2026=new Date(2026,0,1);   // Jan 1 2026
 
-function monthInfo(date){
-  const y=date.getFullYear(),m=date.getMonth();
+// Buckets a date into the Sunday-Saturday week containing it.
+function weekInfo(date){
+  const d=new Date(date);
+  d.setHours(0,0,0,0);
+  d.setDate(d.getDate()-d.getDay());
   return{
-    key:`${y}-${String(m).padStart(2,'0')}`,
-    label:date.toLocaleDateString('en-US',{month:'short',year:'numeric'})
+    key:d.toISOString().slice(0,10),
+    label:d.toLocaleDateString('en-US',{month:'short'})
   };
 }
 
@@ -543,13 +566,19 @@ const STATUS_COL={
   'Done - Interviewed':'#4facfe','Done - Not Selected':'#f5576c',
   'Done - Rejected':'#fa709a','Withdrawn':'#fee140','No Response':'#aaa'
 };
+// Notion's status option casing has drifted before (e.g. "In progress" vs "In Progress"),
+// so status comparisons are case-insensitive rather than exact-string matches.
+function statusEq(actual,expected){return(actual||'').trim().toLowerCase()===expected.toLowerCase();}
+function statusColor(status){
+  const key=Object.keys(STATUS_COL).find(k=>statusEq(status,k));
+  return key?STATUS_COL[key]:'#ccc';
+}
 const THEME_COL={
   'Architecture & Solutions':'#667eea','Data, AI & Analytics':'#4facfe',
   'Product & Strategy':'#43e97b','Engineering & Technology':'#f093fb',
   'Operations & Management':'#fa709a'
 };
 const THEMES=['Architecture & Solutions','Data, AI & Analytics','Product & Strategy','Engineering & Technology','Operations & Management'];
-const TAG_PAL=['#667eea','#43e97b','#f093fb','#fa709a']; // top3 + Other
 
 // ═══ Process data ═══
 function processData(rows,header){
@@ -566,12 +595,14 @@ function processData(rows,header){
     const g=i=>(i>=0&&i<row.length)?(row[i]||'').trim():'';
     const created=pd(g(cols.created));
     if(!created||created<JUN2025)continue;  // exclude pre-Jun 2025
+    const agingRaw=g(cols.aging).match(/\d+/);
     records.push({
       created,
       status:  g(cols.status),
       tags:    g(cols.tags)?g(cols.tags).split(',').map(t=>t.trim()).filter(Boolean):[],
       companies: cleanCo(g(cols.company)),
-      position:  g(cols.position)
+      position:  g(cols.position),
+      aging:   agingRaw?parseInt(agingRaw[0],10):null
     });
   }
   return records;
@@ -582,102 +613,33 @@ function renderDashboard(records){
   // ── Stats ──
   document.getElementById('s-total').textContent=records.length;
   document.getElementById('s-interviewed').textContent=records.filter(r=>
-    r.status==='Done - Interviewed'||r.status==='In progress - Interviewing').length;
+    statusEq(r.status,'Done - Interviewed')||statusEq(r.status,'In progress - Interviewing')).length;
   const now=new Date();
   const cutoff=new Date(now);cutoff.setDate(cutoff.getDate()-10);cutoff.setHours(0,0,0,0);
   document.getElementById('s-recent').textContent=records.filter(r=>r.created>=cutoff).length;
   const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
   document.getElementById('s-recent-range').textContent=`${fmt(cutoff)} – ${fmt(now)}`;
 
-  // ── Monthly bar (Sep 2025+) ──
-  const mMap={};
+  // ── Applications by week, line chart (Sep 2025+) ──
+  const wMap={};
   for(const r of records){
     if(r.created<SEP2025)continue;
-    const{key,label}=monthInfo(r.created);
-    if(!mMap[key])mMap[key]={label,n:0};
-    mMap[key].n++;
+    const{key,label}=weekInfo(r.created);
+    if(!wMap[key])wMap[key]={label,n:0};
+    wMap[key].n++;
   }
-  const mKeys=Object.keys(mMap).sort();
+  const wKeys=Object.keys(wMap).sort();
 
-  kill('monthly');
-  CH.monthly=new Chart(document.getElementById('c-monthly'),{
-    type:'bar',
-    data:{labels:mKeys.map(k=>mMap[k].label),datasets:[{
-      data:mKeys.map(k=>mMap[k].n),backgroundColor:'#667eea',borderRadius:4,label:'Applications'
+  kill('weekly');
+  CH.weekly=new Chart(document.getElementById('c-weekly'),{
+    type:'line',
+    data:{labels:wKeys.map(k=>wMap[k].label),datasets:[{
+      data:wKeys.map(k=>wMap[k].n),borderColor:'#667eea',backgroundColor:'#667eea',
+      pointRadius:3,pointHoverRadius:5,tension:.3,label:'Applications'
     }]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false}},
       scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}}
-    }
-  });
-
-  // ── Status donut ──
-  const stMap={};
-  for(const r of records){const s=r.status||'Unknown';stMap[s]=(stMap[s]||0)+1;}
-  const stKeys=Object.keys(stMap).sort((a,b)=>stMap[b]-stMap[a]);
-
-  kill('status');
-  CH.status=new Chart(document.getElementById('c-status'),{
-    type:'doughnut',
-    data:{labels:stKeys,datasets:[{
-      data:stKeys.map(k=>stMap[k]),
-      backgroundColor:stKeys.map(k=>STATUS_COL[k]||'#ccc'),
-      borderWidth:2,borderColor:'#fff'
-    }]},
-    options:{responsive:true,maintainAspectRatio:false,cutout:'58%',
-      plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:8,
-        generateLabels(chart){
-          const ds=chart.data.datasets[0];
-          return chart.data.labels.map((lbl,i)=>({
-            text:`${lbl}  (${ds.data[i]})`,fillStyle:ds.backgroundColor[i],
-            strokeStyle:'#fff',lineWidth:2,hidden:false,index:i
-          }));
-        }
-      }}}
-    }
-  });
-
-  // ── Tags: stacked bar by quarter, top 3 + Other (Sep 2025+) ──
-  const tagRecs=records.filter(r=>r.created>=OCT2025);
-  // Count all tags to find top 3
-  const tagTotals={};
-  for(const r of tagRecs)for(const t of r.tags)tagTotals[t]=(tagTotals[t]||0)+1;
-  const top3=Object.entries(tagTotals).sort((a,b)=>b[1]-a[1]).slice(0,3).map(e=>e[0]);
-  const tagSeries=[...top3,'Other'];
-  // Build per-quarter counts
-  const tagQMap={};
-  for(const r of tagRecs){
-    const{key,label}=qtrInfo(r.created);
-    if(!tagQMap[key])tagQMap[key]={label,counts:{}};
-    if(r.tags.length===0){
-      // no tags — don't add to Other to avoid inflating
-    } else {
-      for(const t of r.tags){
-        const bucket=top3.includes(t)?t:'Other';
-        tagQMap[key].counts[bucket]=(tagQMap[key].counts[bucket]||0)+1;
-      }
-    }
-  }
-  const tagQKeys=Object.keys(tagQMap).sort();
-
-  kill('tags');
-  CH.tags=new Chart(document.getElementById('c-tags'),{
-    type:'bar',
-    data:{
-      labels:tagQKeys.map(k=>tagQMap[k].label),
-      datasets:tagSeries.map((tag,i)=>({
-        label:tag,
-        data:tagQKeys.map(k=>tagQMap[k].counts[tag]||0),
-        backgroundColor:TAG_PAL[i]||'#bbb',
-        stack:'tags',borderRadius:2
-      }))
-    },
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:6,boxWidth:11}}},
-      scales:{
-        y:{stacked:true,beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f0f0f0'}},
-        x:{stacked:true,grid:{display:false}}
-      }
     }
   });
 
@@ -712,6 +674,99 @@ function renderDashboard(records){
       }
     }
   });
+
+  // ── Aging distribution: fitted normal curve + one point per JD (Jan 2026+) ──
+  const agingRecs=records.filter(r=>r.created>=JAN2026&&typeof r.aging==='number');
+  kill('aging');
+  if(agingRecs.length>=2){
+    const agingVals=agingRecs.map(r=>r.aging);
+    const mean=agingVals.reduce((a,b)=>a+b,0)/agingVals.length;
+    const variance=agingVals.reduce((a,b)=>a+(b-mean)**2,0)/agingVals.length;
+    const sigma=Math.sqrt(variance)||1;
+    const pdf=x=>Math.exp(-((x-mean)**2)/(2*sigma*sigma))/(sigma*Math.sqrt(2*Math.PI));
+
+    const lo=Math.max(0,Math.min(...agingVals)-sigma),hi=Math.max(...agingVals)+sigma;
+    const STEPS=60;
+    const curvePoints=[];
+    for(let i=0;i<=STEPS;i++){
+      const x=lo+(hi-lo)*i/STEPS;
+      curvePoints.push({x,y:pdf(x)});
+    }
+
+    const jdPoints=agingRecs.map(r=>({x:r.aging,y:pdf(r.aging)}));
+    const jdMeta=agingRecs.map(r=>({position:r.position||'(untitled)',company:r.companies.join(', ')||'—'}));
+
+    CH.aging=new Chart(document.getElementById('c-aging'),{
+      data:{
+        datasets:[
+          {type:'line',label:'Normal fit',data:curvePoints,borderColor:'#667eea',backgroundColor:'transparent',
+           pointRadius:0,tension:.35,fill:false,order:1},
+          {type:'scatter',label:'Applications',data:jdPoints,backgroundColor:'#f5576c',borderColor:'#fff',
+           borderWidth:1,pointRadius:5,pointHoverRadius:7,order:0}
+        ]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        interaction:{mode:'nearest',intersect:true},
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{
+            title:()=>'',
+            label(ctx){
+              if(ctx.dataset.label!=='Applications')return null;
+              const m=jdMeta[ctx.dataIndex];
+              return `${m.position} — ${m.company}`;
+            }
+          }}
+        },
+        scales:{
+          x:{type:'linear',title:{display:true,text:'Aging (Days)',font:{size:10}},grid:{color:'#f0f0f0'}},
+          y:{display:false}
+        }
+      }
+    });
+  }
+
+  // ── Companies interviewed, last 6 months (In progress first, then Done - Interviewed) ──
+  const sixMoAgo=new Date(now);sixMoAgo.setMonth(sixMoAgo.getMonth()-6);
+  const inProg=records.filter(r=>statusEq(r.status,'In progress - Interviewing')&&r.created>=sixMoAgo)
+    .sort((a,b)=>b.created-a.created);
+  const doneInt=records.filter(r=>statusEq(r.status,'Done - Interviewed')&&r.created>=sixMoAgo)
+    .sort((a,b)=>b.created-a.created);
+  renderList('list-interviewed',[...inProg,...doneInt],r=>({
+    title:r.position||'(untitled)',
+    sub:r.companies.join(', ')||'—',
+    meta:fmt(r.created),
+    dotColor:statusColor(r.status)
+  }),'No interviews in the last 6 months.');
+
+  // ── New JDs, last 15 days ──
+  const fifteenAgo=new Date(now);fifteenAgo.setDate(fifteenAgo.getDate()-15);
+  const recentJds=records.filter(r=>r.created>=fifteenAgo).sort((a,b)=>b.created-a.created);
+  renderList('list-recent-jds',recentJds,r=>({
+    title:r.position||'(untitled)',
+    sub:r.companies.join(', ')||'—',
+    meta:fmt(r.created)
+  }),'No new JDs in the last 15 days.');
+}
+
+// ═══ List tile renderer ═══
+function renderList(elId,items,mapFn,emptyMsg){
+  const el=document.getElementById(elId);
+  if(items.length===0){el.innerHTML=`<div class="list-empty">${emptyMsg}</div>`;return;}
+  el.innerHTML=items.map(item=>{
+    const{title,sub,meta,dotColor}=mapFn(item);
+    const dot=dotColor?`<span class="list-dot" style="background:${dotColor}"></span>`:'';
+    return`<div class="list-row">
+      <div class="list-main">
+        <div class="list-title">${escapeHtml(title)}</div>
+        <div class="list-sub">${escapeHtml(sub)}</div>
+      </div>
+      <div class="list-meta">${dot}${escapeHtml(meta)}</div>
+    </div>`;
+  }).join('');
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 // ═══ File handling ═══
