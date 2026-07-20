@@ -54,30 +54,44 @@ sensitive than "a job search"), this is the first thing to replace, not extend.
 
 ### Why CSV upload, not a live Notion sync or a Make.com/Zapier workflow
 
-Three ways this dashboard could get its data, and why the CSV-upload path won:
+Both of the "proper" alternatives were actually tried first, and both ran into the
+same core problem: Notion's API doesn't return the values this dashboard actually
+needs, only the raw values it stores.
 
-- **Live Notion API integration.** This is a static page with no server — a "live"
-  integration would mean either shipping a Notion API token to the browser (worse
-  than the current passcode, since now the *data source* is exposed, not just the
-  view) or standing up a backend purely to hold that secret. That's real
-  infrastructure — hosting, monitoring, a place for the integration to silently
-  break — for a database that's reviewed a few times a week, not a live feed.
-- **Make.com / Zapier automation.** This moves the sync problem to a third party
-  instead of removing it: it's still an external dependency with its own
-  failure modes (rate limits, silent auth expiry, a scenario that needs
-  maintaining), plus a subscription cost, and it still needs somewhere to land
-  the data — which would just be this same CSV-in-a-repo pattern with an extra
-  hop in front of it.
-- **Manual CSV export + upload (current approach).** Zero always-on
-  infrastructure. The only secret involved is a fine-grained GitHub PAT, scoped to
-  exactly this repo's contents, that the user supplies and controls — not a
-  standing integration credential. The manual step matches how often the data
-  actually changes, and the GitHub write-back (via the Contents API) means the
-  data still persists across devices and sessions without a database.
+- **Live Notion API integration — abandoned.** Two separate blockers, not just
+  "extra infrastructure":
+  - **Token cost.** Notion's API has no incremental/delta query — pulling only
+    what changed requires their search API's filtering, which isn't available on
+    the free plan. Every sync meant re-pulling the *entire* JD database, burning
+    through API calls for data that mostly hadn't changed.
+  - **Derived values don't come back derived.** `Aging (Days)` is a Notion
+    rollup/formula field — the API doesn't return the computed number, so it
+    would have to be recalculated client-side in an ETL step from raw dates
+    anyway. `Company` is a relation field — the API returns a Notion *record ID*,
+    not the company name, which means a second full download of the entire
+    companies database just to resolve IDs to names. What looked like "call an
+    API" turned into "reimplement two of Notion's own computed columns," which
+    was too elaborate for a personal tracker.
+- **Make.com / Zapier automation — also abandoned.** This solved the first
+  problem (it could pull the full database in manageable chunks without hitting
+  the free-plan search-API wall) but not the second: it still received the same
+  raw relation IDs and formula-less values Notion's API returns, so `Aging` and
+  `Company Name` still needed the exact same resolution/recalculation step,
+  just relocated into a Zap/scenario instead of removed.
+- **Manual CSV export + upload (current approach) — what actually works.**
+  Notion's own **export** (as opposed to its API) already resolves both problem
+  fields — `Aging (Days)` comes out as a plain number, `Company` comes out as the
+  actual name — because the export runs through Notion's UI rendering layer, not
+  its raw API. That sidesteps both blockers at once, for the cost of one manual
+  click every so often. The only secret involved from there is a fine-grained
+  GitHub PAT, scoped to exactly this repo's contents, that the user supplies and
+  controls — not a standing integration credential. The GitHub write-back (via
+  the Contents API) then means the data persists across devices and sessions
+  without a database.
 
-In short: every fancier alternative trades a five-second manual export for an
-always-on system to operate, for a tool one person checks periodically. The CSV
-upload is the version of this dashboard that has no uptime to worry about.
+In short: this isn't "manual because simpler is nicer" — the API-based paths were
+tried and didn't produce usable data without rebuilding logic Notion's UI export
+already does for free.
 
 ### Why GitHub-as-database
 
