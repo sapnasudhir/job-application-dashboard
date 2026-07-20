@@ -107,22 +107,21 @@ body{
 .row-1{grid-template-columns:1fr;}
 .row-2{grid-template-columns:1fr 1fr;}
 .card{position:relative;background:var(--vellum);border-radius:4px;padding:1.2rem 1.3rem;box-shadow:0 4px 16px rgba(8,27,51,.3);color:var(--ink);
-  opacity:0;animation:none;}
+  overflow-x:hidden;opacity:0;animation:none;}
 .card::before{content:'';position:absolute;top:-6px;left:20px;width:36px;height:12px;background:rgba(199,217,236,.5);transform:rotate(-3deg);border-radius:1px;}
-.sheet-tag{font-family:var(--font-mono);font-size:.62rem;letter-spacing:.14em;color:var(--redline);text-transform:uppercase;font-weight:600;margin-bottom:.4rem;}
 .card h3{font-family:var(--font-head);font-size:.82rem;text-transform:uppercase;letter-spacing:.03em;color:var(--ink);font-weight:700;margin-bottom:.9rem;}
 .card h3 .constraint{font-family:var(--font-mono);font-weight:400;color:var(--graphite);font-size:.62rem;text-transform:none;letter-spacing:0;}
 .chart-wrap{position:relative;height:210px;}
 
 /* Lists */
-.list-wrap{max-height:230px;overflow-y:auto;}
-.list-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.6rem 0;border-bottom:1px solid #E4DAC0;transition:background .15s;}
+.list-wrap{max-height:210px;overflow-y:auto;overflow-x:hidden;}
+.list-row{display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.45rem 0;border-bottom:1px solid #E4DAC0;transition:background .15s;}
 .list-row:hover{background:rgba(193,68,14,.05);}
 .list-row:last-child{border-bottom:none;}
-.list-main{min-width:0;}
+.list-main{min-width:0;flex:1;}
 .list-title{font-family:var(--font-body);font-size:.82rem;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.list-sub{font-size:.72rem;color:var(--graphite);margin-top:.1rem;}
-.list-meta{display:flex;align-items:center;gap:.4rem;flex-shrink:0;font-family:var(--font-mono);font-size:.68rem;color:var(--graphite);white-space:nowrap;}
+.list-sub{font-size:.72rem;color:var(--graphite);margin-top:.1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.list-meta{display:flex;align-items:center;gap:.35rem;flex-shrink:0;font-family:var(--font-mono);font-size:.65rem;color:var(--graphite);white-space:nowrap;}
 .list-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 .list-empty{color:var(--graphite);font-family:var(--font-mono);font-size:.78rem;padding:.75rem 0;text-align:center;}
 
@@ -262,7 +261,6 @@ body{
 
   <div class="charts-row row-1">
     <div class="card">
-      <div class="sheet-tag">Sheet A-01</div>
       <h3>Applications by Month <span class="constraint">(Sep 2025 onwards)</span></h3>
       <div class="chart-wrap"><canvas id="c-monthly"></canvas></div>
     </div>
@@ -270,7 +268,6 @@ body{
 
   <div class="charts-row row-1">
     <div class="card">
-      <div class="sheet-tag">Sheet A-02</div>
       <h3>Aging Distribution <span class="constraint">(JDs created Jan 2026 onwards, ≤120 days aging)</span></h3>
       <div class="chart-wrap"><canvas id="c-aging"></canvas></div>
     </div>
@@ -278,12 +275,10 @@ body{
 
   <div class="charts-row row-2">
     <div class="card">
-      <div class="sheet-tag">Sheet A-03</div>
       <h3>Recent Applications <span class="constraint">- Last 15 days</span></h3>
       <div class="list-wrap" id="list-recent-jds"></div>
     </div>
     <div class="card">
-      <div class="sheet-tag">Sheet A-04</div>
       <h3>Recent Interviews <span class="constraint">- Last 6 Months</span></h3>
       <div class="list-wrap" id="list-interviewed"></div>
     </div>
@@ -291,7 +286,6 @@ body{
 
   <div class="charts-row row-1">
     <div class="card">
-      <div class="sheet-tag">Sheet A-05</div>
       <h3>Role Theme Trends by Quarter <span class="constraint">(Oct 2025 onwards)</span></h3>
       <div class="chart-wrap"><canvas id="c-themes"></canvas></div>
     </div>
